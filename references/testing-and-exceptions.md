@@ -23,6 +23,8 @@ Law 13: length is a signal, not a law. A long file that still does exactly one t
 
 The test is Law 2. A file that passes it may stay long.
 
+The same holds for a function under Law 0. A `switch` that maps many cases one to one, or a long list of declarative fields, may run past 30 lines because it is flat and does one thing. Generated code needs no hand written comments.
+
 Flutter note: a deeply nested widget tree is not an exception. If a build method runs long, extract widget classes. See `lang-dart.md`.
 
 ### When code may live outside a feature

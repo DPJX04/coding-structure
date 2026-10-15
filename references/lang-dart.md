@@ -118,6 +118,7 @@ The Dart linter enforces some of this. Do not fight it.
 | Private member | leading underscore | `_SlotHeader`, `_validate` |
 | Feature barrel | matches folder name | `features/booking/booking.dart` |
 | Test file | mirrors source, `_test` suffix | `test/utils/date_utils_test.dart` |
+| Function comment | one line `///` above every function and method | `/// Fetches the open slots for one date.` |
 
 ---
 
@@ -179,6 +180,7 @@ class BookingRepository {
   BookingRepository(this._api);
   final ApiClient _api;
 
+  /// Fetches every slot on one date. Returns [Err] instead of throwing.
   Future<Result<List<Slot>>> fetchSlots(String date) async {
     try {
       final raw = await _api.get('/slots', query: {'date': date});
@@ -212,6 +214,7 @@ class Env {
   static const apiUrl = String.fromEnvironment('API_URL');
   static const isProd = bool.fromEnvironment('dart.vm.product');
 
+  /// Stops the app at launch if a required value was not passed in.
   static void assertConfigured() {
     if (apiUrl.isEmpty) {
       throw StateError('Missing API_URL. Pass it with --dart-define.');

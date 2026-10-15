@@ -2,7 +2,7 @@
 
 `SKILL.md` holds the Laws. This file is the audit companion for a large or commercial codebase: the dependency arrows that must not exist, where each kind of secret may live, and a checklist to run the repo against. Language neutral. Translate layer names into folders with the matching language reference.
 
-What decides whether a big codebase stays simple is not where files sit, it is which files are allowed to depend on which. Everything here is about checking that.
+Where files sit decides whether a stranger can find them. Which files may depend on which decides whether a change in one place breaks another. A big codebase needs both, and most of this file is about checking the second.
 
 ---
 
@@ -48,6 +48,8 @@ Audit a codebase against this. Each unchecked box is a place it gets harder to m
 Layout
 [ ] The layout matches the framework or language convention, not a copied one
 [ ] The layout is consistent across the whole repo
+[ ] The source root holds entry files only, every other file sits in its layer folder
+[ ] No folder mixes files from different layers
 
 Dependencies
 [ ] No service, shared helper, or shared UI element imports from a feature
@@ -73,6 +75,13 @@ Foundations
 [ ] One error shape declared in the type layer, one central parser and logger
 [ ] No escape hatch types in the lower layers, shared types live in their own layer
 [ ] Strict type checking is on for the service, shared logic, and type layers
+
+Simplicity
+[ ] Every function does one job and its name says exactly what that job is
+[ ] Every top-level function and method has a one-line comment saying what its name cannot
+[ ] Functions stay near 30 lines with at most two levels of nesting
+[ ] No helper, base class, or generic with only one caller
+[ ] No dead code or commented out blocks
 ```
 
 Maintainability at scale is not about having more rules. It is about dependencies pointing one way, features sealed behind one door, security designed in, and a machine checking all three.

@@ -25,20 +25,20 @@ project_root/
 │       │       └── _formatter.py
 │       ├── services/
 │       │   ├── __init__.py
+│       │   ├── db.py               # connection pool, built once from settings
 │       │   ├── db_service.py
 │       │   └── email_service.py
 │       ├── utils/
 │       │   ├── __init__.py
 │       │   ├── error_handler.py
 │       │   └── date_utils.py
-│       ├── types/                  # shared dataclasses, TypedDicts, or pydantic models, and Result
+│       ├── domain/                 # shared dataclasses, TypedDicts, or pydantic models, and Result
 │       │   ├── __init__.py
 │       │   ├── booking.py
 │       │   └── result.py
 │       └── config/
 │           ├── __init__.py
-│           ├── settings.py         # the only file that reads raw env
-│           └── db.py               # connection pool, built once from settings
+│           └── settings.py         # the only file that reads raw env
 ├── tests/                          # mirrors src/myapp/
 │   ├── services/test_db_service.py
 │   └── utils/test_date_utils.py
@@ -65,6 +65,12 @@ packages = ["src/myapp"]
 
 Then `pip install -e .` once, and imports resolve consistently everywhere.
 
+### Why `domain/`, not `types/`
+The type layer is named `domain/` in Python. A package folder called `types` shadows the standard library's `types` module the moment that folder lands on `sys.path`, such as when a file inside the package is run directly or a mirrored `tests/types/` is discovered, and `dataclasses` itself imports `types`, so everything breaks at once. The same goes for any folder named after a standard library module: `logging`, `email`, `json`, `secrets`.
+
+### Without pip
+When the project must stay standard library only, skip the build backend and the editable install. Run the app with `python -m myapp` from `src/`, or with `PYTHONPATH=src`, and run tests with `PYTHONPATH=src python -m unittest discover -s tests -t .`.
+
 ---
 
 ## The Dependency Law, Mapped
@@ -72,10 +78,10 @@ Then `pip install -e .` once, and imports resolve consistently everywhere.
 Law 1 translated into this layout's folder names. The diagram in `SKILL.md` stays the authoritative copy.
 
 ```
-features/  can use →  services, utils, types
-services/  can use →  utils, types, config
-utils/     can use →  types only
-types/     can use →  nothing
+features/  can use →  services, utils, domain
+services/  can use →  utils, domain, config
+utils/     can use →  domain only
+domain/    can use →  nothing
 ```
 
 There is no UI logic layer in a backend, so the feature's entry point composes its private helpers and its one service call directly, per Law 4: it may call them, it defines none of them.
@@ -87,7 +93,7 @@ A server handles one request at a time and forgets it. There is usually no state
 Two things get mistaken for one:
 
 - **Request scoped state.** A user, a tenant, a correlation id. Pass it as an argument, or use a framework dependency such as FastAPI's `Depends`. Never a module level global, which is shared across every request in the process and is a data leak between users waiting to happen.
-- **Process wide caches and connection pools.** These belong in `config/` or `services/`, created once at startup and injected. They are infrastructure, not application state.
+- **Process wide caches and connection pools.** These belong in `services/`, created once at startup and injected, because the service layer owns every external client (Law 7) and `config/` imports nothing. They are infrastructure, not application state.
 
 If a long running worker or a desktop app genuinely does hold state across time, apply the store rules from Law 1 and put it in its own module above `services/`.
 
@@ -112,12 +118,13 @@ __all__ = ["create_booking", "cancel_booking"]
 ```python
 # src/myapp/features/booking/orchestrator.py
 from myapp.services.db_service import insert_booking
-from myapp.types.booking import Confirmation
-from myapp.types.result import Err, Ok, Result
+from myapp.domain.booking import Confirmation
+from myapp.domain.result import Err, Ok, Result
 from ._validator import validate_booking
 from ._formatter import to_confirmation
 
 def create_booking(user_id: str, slot_id: str) -> Result[Confirmation]:
+    """Validate and save one booking, returning its confirmation or an error."""
     error = validate_booking(user_id, slot_id)
     if error:
         return Err(error)
@@ -149,15 +156,17 @@ Python cannot enforce privacy, so it relies on two conventions and one tool:
 | Function and variable | snake_case | `create_booking` |
 | Constant | UPPER_SNAKE | `MAX_SLOTS` |
 | Test file | `test_` prefix | `test_db_service.py` |
+| Function | snake_case, verb first | `fetch_slots`, `create_booking` |
+| Function comment | one line docstring in every top-level function, method, and class | `"""Fetch the open slots for one date."""` |
 
 ---
 
 ## The Result Shape and the Service Pattern
 
-Law 12: one error shape, declared once in `types/`, imported by every service. Python's sum type is a union of two frozen dataclasses, narrowed with `isinstance` or `match`.
+Law 12: one error shape, declared once in `domain/`, imported by every service. Python's sum type is a union of two frozen dataclasses, narrowed with `isinstance` or `match`.
 
 ```python
-# src/myapp/types/result.py
+# src/myapp/domain/result.py
 from dataclasses import dataclass
 from typing import Generic, TypeAlias, TypeVar
 
@@ -179,17 +188,19 @@ Services are named functions, each handling its own failure and returning a `Res
 ```python
 # src/myapp/services/db_service.py
 from datetime import date as iso_date
-from myapp.config.db import pool
+from myapp.services.db import pool
 from myapp.utils.error_handler import parse_error
-from myapp.types.booking import Slot
-from myapp.types.result import Err, Ok, Result
+from myapp.domain.booking import Slot
+from myapp.domain.result import Err, Ok, Result
 
 def _to_slot(row: dict) -> Slot:
+    """Check one raw row and return it as a Slot, or raise if the id is missing."""
     if not isinstance(row.get("id"), str):
         raise ValueError("slot row is missing an id")
     return Slot(**row)
 
 def fetch_slots(date: str) -> Result[list[Slot]]:
+    """Fetch every slot on one date. Returns Err instead of raising."""
     try:
         iso_date.fromisoformat(date)
         with pool.connection() as conn:
@@ -223,13 +234,42 @@ class Settings(BaseSettings):
 settings = Settings()  # raises immediately if a required value is missing
 ```
 
-No other module reads `os.environ`. The connection pool in `config/db.py` is built once from `settings.database_url` and imported by services.
+Standard library only, the same module is a frozen dataclass built once:
+
+```python
+# src/myapp/config/settings.py
+import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Every environment value the app reads, checked once at import."""
+    database_url: str
+    is_prod: bool
+
+
+def _required(name: str) -> str:
+    """Return the env value, or stop the app at boot if it is missing."""
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required env var: {name}")
+    return value
+
+
+settings = Settings(
+    database_url=_required("DATABASE_URL"),
+    is_prod=os.environ.get("APP_ENV") == "production",
+)
+```
+
+No other module reads `os.environ`. The connection pool in `services/db.py` is built once from `settings.database_url` and imported by the other services.
 
 ---
 
 ## Types
 
-Shared shapes and `Result` live in `types/` and depend on nothing. Use dataclasses, `TypedDict`, or pydantic models. Type hint every public function, and treat a bare `dict` passed between layers as the escape hatch it is. Run `mypy` or `pyright` in strict mode on `services/`, `utils/`, and `types/` at minimum, since those are the layers everything else leans on.
+Shared shapes and `Result` live in `domain/` and depend on nothing. Use dataclasses, `TypedDict`, or pydantic models. Type hint every public function, and treat a bare `dict` passed between layers as the escape hatch it is. Run `mypy` or `pyright` in strict mode on `services/`, `utils/`, and `domain/` at minimum, since those are the layers everything else leans on.
 
 ---
 
@@ -249,7 +289,7 @@ layers =
     myapp.features
     myapp.services
     myapp.utils
-    myapp.types
+    myapp.domain
 
 [importlinter:contract:features]
 name = Features are independent
@@ -265,7 +305,7 @@ type = forbidden
 source_modules =
     myapp.features
     myapp.utils
-    myapp.types
+    myapp.domain
 forbidden_modules =
     myapp.config
 allow_indirect_imports = True
@@ -279,7 +319,7 @@ forbidden_modules =
     myapp.features
     myapp.services
     myapp.utils
-    myapp.types
+    myapp.domain
 ```
 
 The `layers` contract enforces the one way flow. The `independence` contract enforces that features never touch each other. The two `forbidden` contracts pin `config` down: only `services` reads it, and it reads nothing back. `allow_indirect_imports` is required on the first, because by default a forbidden contract also fails on the chain `features → services → config`, which is exactly the flow this layout prescribes. Run `lint-imports` in CI.
@@ -298,6 +338,10 @@ tests/
 ```
 
 Spend effort on `utils/` and `services/`; `testing-and-exceptions.md` has the order to write them in.
+
+To point services at a throwaway database, have each service open its connection through one function in `services/db.py` that reads `settings` when called, not at import. A test then patches that one function, or sets the env value before importing `config.settings`, and every service follows.
+
+With `unittest` discovery and `-t .`, every folder under `tests/` needs an `__init__.py`, or its tests are skipped without a word.
 
 ---
 

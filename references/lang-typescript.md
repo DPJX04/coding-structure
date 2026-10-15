@@ -16,7 +16,7 @@ src/
 ├── utils/              # pure helpers, dates, formatting, error parsing
 ├── constants/          # design tokens and fixed values, depends on nothing
 ├── types/              # shared domain types and the Result shape, lowest layer
-├── config/             # client setup and one typed env module, no queries
+├── config/             # the one typed env module, imports nothing
 └── navigation/         # routing config and route files, if the framework does not own them
 ```
 
@@ -63,6 +63,7 @@ src/store/              # or contexts/, or providers/, pick one and keep it
 import { useQuery } from '@tanstack/react-query';
 import { fetchSlots } from '@services/bookingService';
 
+/** Caches the slots for one date, fetched through the booking service. */
 export function useSlots(date: string) {
   return useQuery({ queryKey: ['slots', date], queryFn: () => fetchSlots(date) });
 }
@@ -115,6 +116,8 @@ One barrel per feature is correct. A barrel in every folder is not. Deep barrel 
 | Feature folder | camelCase | `auth/`, `bookingSlots/` |
 | Shared component folder | PascalCase | `components/Button/` |
 | Public door | `index.ts` | barrel only, never logic |
+| Function | camelCase, verb first | `fetchSlots`, `formatMoney` |
+| Function comment | one line `/** */` above every function | `/** Fetches the open slots for one date. */` |
 
 ---
 
@@ -133,17 +136,19 @@ Services are named async functions only. Each handles its own failure and return
 
 ```ts
 // src/services/bookingService.ts
-import { db } from '@config/dbClient';
+import { db } from './dbClient';
 import { parseError } from '@utils/errorHandler';
 import type { Result } from '@domain/result';
 import type { Slot } from '@domain/booking';
 
+/** Checks one raw row and returns it as a Slot, or throws if the id is missing. */
 function toSlot(raw: unknown): Slot {
   const row = raw as Record<string, unknown>;
   if (typeof row?.id !== 'string') throw new Error('Slot is missing an id');
   return row as Slot;
 }
 
+/** Fetches every slot on one date. Returns an error result instead of throwing. */
 export async function fetchSlots(date: string): Promise<Result<Slot[]>> {
   try {
     const response = await db.from('slots').select('*').eq('date', date);
@@ -155,7 +160,7 @@ export async function fetchSlots(date: string): Promise<Result<Slot[]>> {
 }
 ```
 
-`toSlot` is the Law 10 gate: rows are checked here, before anything above this layer sees them. Imports cross layers by alias rather than by `../`, so the layer is visible in the import line and a moved file does not change it. The client shown is one example. Swap it for any backend, keep the shape.
+`dbClient.ts` sits beside it in `services/`: it builds the client once from `config`, because the service layer owns every external client (Law 7). `toSlot` is the Law 10 gate: rows are checked here, before anything above this layer sees them. Imports cross layers by alias rather than by `../`, so the layer is visible in the import line and a moved file does not change it. The client shown is one example. Swap it for any backend, keep the shape.
 
 ---
 
@@ -165,6 +170,7 @@ One file reads raw env. Nothing else does.
 
 ```ts
 // src/config/env.ts
+/** Returns the env value, or stops the app at boot if it is missing. */
 function required(value: string | undefined, name: string): string {
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
@@ -299,6 +305,16 @@ src/utils/dateFormatter.test.ts
 ```
 
 End to end flows live in a top level `e2e/`, because they cross features.
+
+---
+
+## Plain JavaScript
+
+Everything above applies, with three swaps for a project with no TypeScript and no bundler, such as a Node CLI:
+
+- **Aliases** come from the `"imports"` field in `package.json`, which Node resolves natively: `"#services/*": "./src/services/*"`, imported as `#services/invoiceService.js`. Check that the boundary check resolves them, or keep relative imports.
+- **The type layer** holds JSDoc `@typedef` comments and nothing that runs. Plain functions that build a `Result` live in `utils/`.
+- **Env files** load with `process.loadEnvFile()` on Node 20.12 and later, called once inside the config module.
 
 ---
 

@@ -49,6 +49,7 @@ Two files here. One formats money, one turns any thrown thing into a message. Bo
 
 ```ts
 // src/utils/money.ts
+/** Formats an amount in cents as a currency string, such as 125000 → "RM 1,250.00". */
 export function formatMoney(amountCents: number, currency: string, locale: string): string {
   return new Intl.NumberFormat(locale, { style: 'currency', currency })
     .format(amountCents / 100);
@@ -70,6 +71,7 @@ The locale is a parameter, not a default. `Intl` with no locale reads the machin
 
 ```ts
 // src/utils/errorHandler.ts
+/** Turns anything thrown or any failed response into a message a person can read. */
 export function parseError(cause: unknown): string {
   if (cause instanceof Response) return `Request failed with status ${cause.status}`;
   if (cause instanceof Error) return cause.message;
@@ -79,6 +81,8 @@ export function parseError(cause: unknown): string {
 
 One function turns anything into a string a person can read. This is Law 12's single parser, and it is the reason no screen below ever inspects an error.
 
+Every top-level function in this example carries one line above it saying what it does, per Law 0. Read only those lines, top to bottom, and you know the whole feature without reading a body.
+
 **Skip this hop and:** the division by 100 ends up inline in the component, untested, and every screen invents its own way of describing a failure.
 
 ---
@@ -87,6 +91,7 @@ One function turns anything into a string a person can read. This is Law 12's si
 
 ```ts
 // src/config/env.ts
+/** Returns the env value, or stops the app at boot if it is missing. */
 function required(value: string | undefined, name: string): string {
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
@@ -114,6 +119,7 @@ import type { Invoice, InvoiceStatus } from '@domain/invoice';
 
 const STATUSES: InvoiceStatus[] = ['draft', 'sent', 'paid'];
 
+/** Checks one raw row field by field and returns it as an Invoice, or throws. */
 function toInvoice(raw: unknown): Invoice {
   const row = raw as Record<string, unknown>;
   for (const key of ['id', 'reference', 'currency', 'dueAt'] as const) {
@@ -124,6 +130,7 @@ function toInvoice(raw: unknown): Invoice {
   return row as Invoice;
 }
 
+/** Fetches the signed in user's invoices. Returns an error result instead of throwing. */
 export async function fetchInvoices(): Promise<Result<Invoice[]>> {
   try {
     const res = await fetch(`${config.apiUrl}/invoices`, { credentials: 'include' });
@@ -135,6 +142,7 @@ export async function fetchInvoices(): Promise<Result<Invoice[]>> {
   }
 }
 
+/** Marks one invoice as paid and returns the updated invoice, or an error result. */
 export async function markInvoicePaid(id: string): Promise<Result<Invoice>> {
   if (!id) return { ok: false, error: 'Invoice id is required' };
   try {
@@ -168,6 +176,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchInvoices, markInvoicePaid } from '@services/invoiceService';
 import type { Invoice } from '@domain/invoice';
 
+/** Holds the invoice list with its loading and error state, and exposes a pay action. */
 export function useInvoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -189,7 +198,10 @@ export function useInvoices() {
 
   async function pay(id: string) {
     const result = await markInvoicePaid(id);
-    if (!result.ok) return setError(result.error);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     await load();
   }
 
@@ -212,6 +224,7 @@ Notice it decides nothing about appearance. It exposes `error` as a string and l
 import { formatMoney } from '@utils/money';
 import type { Invoice } from '@domain/invoice';
 
+/** Shows one invoice with a pay button while it is unpaid. */
 export function InvoiceRow({ invoice, onPay }: { invoice: Invoice; onPay: () => void }) {
   return (
     <article>
@@ -236,6 +249,7 @@ import { InvoiceRow } from './InvoiceRow';
 import { ErrorBanner } from '@components/ErrorBanner';
 import { Spinner } from '@components/Spinner';
 
+/** Composes the invoice list screen from the hook and the row component. */
 export function InvoiceListScreen() {
   const { invoices, error, loading, pay } = useInvoices();
 
@@ -277,6 +291,7 @@ One line, and it is the whole contract. `useInvoices` and `InvoiceRow` stay priv
 // src/navigation/InvoicesRoute.tsx
 import { InvoiceListScreen } from '@features/invoices';
 
+/** Renders the invoices feature at its route. */
 export default function InvoicesRoute() {
   return <InvoiceListScreen />;
 }
