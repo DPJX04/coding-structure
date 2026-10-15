@@ -18,7 +18,7 @@ Two priorities come before everything else:
 - **Simple code.** A person reading a function for the first time understands it on one pass. Law 0.
 - **Every file in its layer folder.** Files are sorted by layer, so a stranger finds each one where they expect it. Law 3.
 
-Run Step 0, Step 1, and Step 2 in order. Step 2 sends you to a procedure. Below the procedures, Where Does This Code Go? and the Laws are reference: consult them while you work.
+Run Step 0, Step 1, and Step 2 in order; when the request only changes existing code, skip straight from Step 0 to Changing Existing Code. Step 2 sends you to a procedure. Below the procedures, Where Does This Code Go? and the Laws are reference: consult them while you work.
 
 **Two moments stop the run and wait for the user's OK:** a leaked key found in the code (Law 15), and the refactor map before anything moves. Everywhere else, "tell the user" or "show the user" means report it and carry on.
 
@@ -88,7 +88,7 @@ lib/
 test/                    mirrors lib/
 ```
 
-The **source root** is the folder that holds the code: `src/` in TypeScript, the package `src/myapp/` in Python, `lib/` in Dart. It holds entry files only: `main`, `app`, `index`, and Python's `__init__.py` and `__main__.py`. The **project root** above it holds the manifest, config files, data files, and the command that runs the app.
+The **source root** is the folder that holds the code: `src/` in TypeScript, the package `src/myapp/` in Python, `lib/` in Dart. It holds entry files only: `main`, `app`, `index`, and Python's `__init__.py` and `__main__.py`. The **project root** above it holds the manifest, config files, data files, and the command that runs the app. A command-line app's run file, such as an `index.js` that users start with `node index.js`, may stay at the project root as long as it only hands over to the source root.
 
 The language references expand these trees into framework overrides, lint config, and worked patterns. Read the matching one before scaffolding a project or adding the first feature to a stack. This table is the only list of them.
 
@@ -106,7 +106,7 @@ Skip this step in Changing Existing Code; that project's size is already settled
 
 Structure costs reading time too. Build only as much of it as the code needs today.
 
-A **feature** is one domain noun the user works with, such as invoices, bookings, or reminders, together with every screen, command, or endpoint that acts on it. Listing, paying, and totalling invoices is one feature. Count nouns, not commands. A command belongs to the noun it acts on: reminders about overdue invoices are part of invoices until reminders get data, screens, or settings of their own.
+A **feature** is one domain noun the user works with, such as invoices, bookings, or reminders, together with every screen, command, or endpoint that acts on it. Listing, paying, and totalling invoices is one feature. Count nouns, not commands. A command belongs to the noun it acts on: reminders about overdue invoices are part of invoices until reminders get screens or commands of their own. A noun the user only sees through another noun, such as the client named on an invoice, is part of that feature even when it has its own data.
 
 | Size | What it looks like | What you build |
 |---|---|---|
@@ -114,7 +114,7 @@ A **feature** is one domain noun the user works with, such as invoices, bookings
 | Small app | one or two features | Only the layer folders the code uses, usually features, services, domain types, and config. The config module and the one error shape from day one. The boundary check once there are two features. |
 | Full app | three or more features, or more than one developer | Every step of Starting a New Project, every Law. |
 
-Move up a size the day the code does: a script that takes on a second job becomes a small app, and a small app's third feature brings the full kit. Laws 8, 9, and 10 hold at every size. Tell the user the size you picked in one line.
+Move up a size the day the code does: a script that takes on a second job becomes a small app, and a small app's third feature brings the full kit. Laws 8, 9, and 10 hold at every size. Whenever you run this step, tell the user the size you picked in one line.
 
 ---
 
@@ -222,9 +222,9 @@ Each layer you move is only depended on by things above it, so the project keeps
 
 **Know the stop signal.** Every file moves to its layer folder, because placement is what lets the next person find it. Rewriting a file's insides is different: a file that is ugly but stable, and untouched for months, keeps its insides. Simplify what is about to change anyway, and everything when the user asked for readability.
 
-**Simplify after moving.** A move commit changes paths and imports only. Splitting a long function, renaming a vague one, or adding the missing one-line comments per Law 0 comes after: one file per commit in a full app, one layer per commit in a small app, each plus the callers a changed signature forces.
+**Simplify after moving.** A move commit changes paths and imports only. Splitting a long function, renaming a vague one, adding the missing one-line comments per Law 0, and bringing services up to Laws 10 and 12 (validated input, the one error shape) come after: one file per commit in a full app, one layer per commit in a small app, each plus the callers a changed signature forces.
 
-**Bugs found on the way** are fixed after the moves, each in its own commit, and listed to the user at the end as behaviour changes, including any error message that now reads differently. Behaviour that might be intended, such as which records count as overdue, is a question for the user, not a fix.
+**Bugs found on the way** are fixed after the moves, each in its own commit unless a signature change in the simplify phase already fixed it, and listed to the user at the end as behaviour changes, including any error message that now reads differently or any failure the services now report instead of crashing. Behaviour that might be intended, such as which records count as overdue, is a question for the user, not a fix.
 
 **Done when** the boundary check, where the size calls for one, runs at error with zero violations, the app runs and matches the baseline apart from the listed bug fixes, the source root holds entry files only, every file sits in its layer folder, and no commit mixes a move with a content change.
 
@@ -292,7 +292,7 @@ export function formatMoney(amountCents: number, currency: string, locale: strin
 ```
 
 ### 1. Dependencies point one way
-Code may depend only on the layer below it. Never sideways, never upward.
+Code may depend only on the layer below it. Never sideways, never upward. Files inside one layer may use each other, such as a service calling the shared database client in `services/`, with one exception: a feature never imports a sibling feature (Law 5).
 
 ```
 feature layer      can use →  UI logic, store, service, shared UI, shared logic, type layers

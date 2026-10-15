@@ -314,7 +314,7 @@ Everything above applies, with three swaps for a project with no TypeScript and 
 
 - **Aliases** come from the `"imports"` field in `package.json`, which Node resolves natively: `"#services/*": "./src/services/*"`, imported as `#services/invoiceService.js`. Check that the boundary check resolves them, or keep relative imports.
 - **The type layer** holds JSDoc `@typedef` comments and nothing that runs. Plain functions that build a `Result` live in `utils/`.
-- **Env files** load with `process.loadEnvFile()` on Node 20.12 and later, called once inside the config module.
+- **Env files** load with `process.loadEnvFile()` on Node 20.12 and later, called once inside the config module. It throws when the file is missing, so check `existsSync('.env')` first; a fresh clone with no `.env` should still run every command that needs no secret (Law 11).
 
 ---
 
