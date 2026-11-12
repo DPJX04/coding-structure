@@ -76,13 +76,14 @@ The Vite template ships no test runner. Add Vitest, and import `test` and `expec
 // src/utils/errorHandler.ts
 /** Turns anything thrown or any failed response into a message a person can read. */
 export function parseError(cause: unknown): string {
+  console.error(cause); // Law 12: the one place a raw error is logged
   if (cause instanceof Response) return `Request failed with status ${cause.status}`;
   if (cause instanceof Error) return cause.message;
   return 'Something went wrong';
 }
 ```
 
-One function turns anything into a string a person can read. This is Law 12's single parser, and it is the reason no screen below ever inspects an error.
+One function turns anything into a string a person can read, and logs the raw cause on the way. This is Law 12's single parser, and it is the reason no screen below ever inspects an error.
 
 Every top-level function in this example carries one line above it saying what it does, per Law 0. Read only those lines, top to bottom, and you know the whole feature without reading a body.
 
@@ -121,6 +122,7 @@ import type { Result } from '@domain/result';
 import type { Invoice, InvoiceStatus } from '@domain/invoice';
 
 const STATUSES: InvoiceStatus[] = ['draft', 'sent', 'paid'];
+const TIMEOUT_MS = 10_000; // Law 7: no call waits forever
 
 /** Checks one raw row field by field and returns it as an Invoice, or throws. */
 function toInvoice(raw: unknown): Invoice {
@@ -136,7 +138,10 @@ function toInvoice(raw: unknown): Invoice {
 /** Fetches the signed in user's invoices. Returns an error result instead of throwing. */
 export async function fetchInvoices(): Promise<Result<Invoice[]>> {
   try {
-    const res = await fetch(`${config.apiUrl}/invoices`, { credentials: 'include' });
+    const res = await fetch(`${config.apiUrl}/invoices`, {
+      credentials: 'include',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
     if (!res.ok) return { ok: false, error: parseError(res) };
     const body: unknown = await res.json();
     if (!Array.isArray(body)) return { ok: false, error: 'Unexpected response from the server' };
@@ -153,6 +158,7 @@ export async function markInvoicePaid(id: string): Promise<Result<Invoice>> {
     const res = await fetch(`${config.apiUrl}/invoices/${id}/paid`, {
       method: 'POST',
       credentials: 'include',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: parseError(res) };
     return { ok: true, data: toInvoice(await res.json()) };

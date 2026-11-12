@@ -323,7 +323,7 @@ Automate this with a **boundary check**. TypeScript and Python have a tool that 
 
 The folder name is yours. `store/`, `contexts/`, `providers/`, `state/` are all fine, and so is a library or the language's own built in mechanism. What matters is one place for it, with the arrows pointing the same way. Pick a name on day one and keep it, because two names for one layer is worse than either name.
 
-If your project has no store, the layer simply does not exist and everything above collapses one step. Create one when two features share state.
+If your project has no store, the layer simply does not exist and everything above collapses one step. Create one when two features share state. Where a framework's own guide gives shared state another home, the language reference says so and that home wins: Flutter keeps it in repositories.
 
 ### 2. One responsibility per file
 A file's job is one topic: it holds every function that works on the same thing, the way one `citations` file finds, checks, and prints citations. Describe that topic in one sentence; when the sentence needs an `and` to join two unrelated things, split the file. Name each file for its topic. A `helpers` or `utils` file inside a feature is the usual way this law gets broken.
@@ -339,13 +339,13 @@ A folder whose files do different jobs, such as a service beside a screen beside
 The screen, widget, route handler, or module entry composes things. It does not define them. No business rules, no raw client calls, no formatting. What it pulls out goes into the feature's private files grouped by topic, not one file per function: a small feature's checks and formatting share one file. It calls the UI logic layer where one exists; where the stack has no UI logic layer between entry point and service, such as a backend route handler, it calls the service functions the job needs and returns. In a command-line app, the entry file parses the arguments and calls one door function per command; parsing arguments is composition, not implementation.
 
 ### 5. Features never touch each other
-A feature must not import from a sibling feature. When one needs something from another, there are three paths: move the shared work down into a service, move the shared shape into the type layer, or use an event so the sender does not know who listens. A shared store is not a fourth path. Writing to a store in feature A so feature B can read it is a sibling import with extra steps: the coupling is still there, it has just left the import line where a lint rule could catch it.
+A feature must not import from a sibling feature. When one needs something from another, there are three paths: move the shared work down into a service, move the shared shape into the type layer, or use an event so the sender does not know who listens. A shared store is not a fourth path for a feature's own data. Writing feature A's data to a store so feature B can read it is a sibling import with extra steps: the coupling is still there, it has just left the import line where a lint rule could catch it. State that belongs to the whole app, such as the signed in session, is not that case: its holder owns it and its changes, and every feature asks the holder.
 
 ### 6. Every feature has one public door
 The outside world enters a feature through one declared surface. Everything else is private and may change freely. The door holds exports and no logic. Use the strongest sealing mechanism the language offers, not a barrel file by habit. The Step 0 table names the mechanism per language.
 
 ### 7. All external interaction goes through a service layer
-No UI, widget, screen, or route handler ever calls a database, HTTP client, or third party SDK directly. One layer owns that, and it is also the security gate.
+No UI, widget, screen, or route handler ever calls a database, HTTP client, or third party SDK directly. One layer owns that, and it is also the security gate. Every outside call carries a timeout, so a service that never answers becomes an error result and not an endless wait.
 
 ### 8. The client is never the authority
 Treat every request from an app, browser, or kiosk as if a hostile person wrote it by hand. Identity, role, and ownership come from the verified server session, never from a field the client sent.
@@ -360,7 +360,7 @@ Every value entering from outside is checked at the service edge before use or s
 Every environment value, key name, base URL, and flag flows through one typed module. No other file reads a raw environment value. A value every path needs is checked at startup, so a misconfiguration fails loudly at boot, not silently inside a feature. A value only one command or route needs, such as one mailer key, is checked by a config function that the one service calls, so the rest of the app still runs without it.
 
 ### 12. One error shape
-Services return a consistent result rather than throwing to the caller. The result type is declared once, in the type layer, and every service imports it. One place parses raw errors into clean messages. One place logs them. The UI decides how to show an error, never how to parse one. Where the language has a sum type, use it: a Dart `sealed` class, a TypeScript discriminated union, or a Python union of two dataclasses forces the caller to handle the failure branch, which a pair of optional fields does not.
+Services return a consistent result rather than throwing to the caller. The result type is declared once, in the type layer, and every service imports it. One place parses raw errors into clean messages. The same place logs them: the parser logs the raw error once, before it returns the clean message. The UI decides how to show an error, never how to parse one. Where the language has a sum type, use it: a Dart `sealed` class, a TypeScript discriminated union, or a Python union of two dataclasses forces the caller to handle the failure branch, which a pair of optional fields does not.
 
 ### 13. Length is a signal, not a law
 Roughly 400 lines for a file, roughly 120 for an orchestrator, roughly 30 for a function, is a prompt to check whether it took on a second responsibility. A long file that still does exactly one thing may stay long. `references/testing-and-exceptions.md` lists the cases where that is so.

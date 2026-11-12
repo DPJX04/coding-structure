@@ -143,7 +143,7 @@ export type Result<T> =
   | { ok: false; error: string };
 ```
 
-Services are named async functions only. Each handles its own failure and returns a `Result`. No UI, no navigation, no state.
+Services are named async functions only. Each handles its own failure and returns a `Result`. No UI, no navigation, no state. Every `fetch` carries `signal: AbortSignal.timeout(ms)`, and an SDK client takes its timeout where it is built (Law 7). `parseError` logs the raw error before it returns the message (Law 12).
 
 ```ts
 // src/services/bookingService.ts

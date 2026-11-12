@@ -71,11 +71,11 @@ models/        can use →  nothing
 
 ### State, and where it lives
 
-Flutter has no store layer, so there is no `state/` folder. Law 1 in `SKILL.md` lets that layer be absent, and app wide state takes Law 5's first path: it moves down into the repository that owns the data. The Flutter mechanics:
+Flutter has no store layer, so there is no `state/` folder. Law 1 in `SKILL.md` hands this choice to the framework's own guide, and Flutter's guide keeps app wide state in the repository that owns the data. Two features that read or change that state are both using the service layer, not each other, so Law 5 holds. The Flutter mechanics:
 
 - A controller belongs to one screen and stays in its feature, as `booking_controller.dart` shows above. Two screens that show the same data each keep their own controller.
 - App wide state, such as the signed in session or an in-memory cache, lives in the repository that owns that data. The repository exposes it as a `Stream` or a `Listenable`, and each controller that needs it listens.
-- Repositories never import each other, which is narrower than Law 1 allows inside a layer. Logic that needs two of them takes both in the controller and combines them there.
+- Repositories never import each other, which is narrower than Law 1 allows inside a layer. Logic that needs two of them takes both in the controller and combines them there. A value every request needs, such as the session token, reaches the client as a callback that the owning repository sets on it.
 - Whatever the mechanism, a provider, a notifier, or a stream, the layer rule is the same. The mechanism is a detail. The direction of the arrow is not.
 
 ---
@@ -195,7 +195,7 @@ class BookingRepository {
 
 The shape check and `Slot.fromJson` are the Law 10 gate. With `checked: true` (see Models), a missing or mistyped field throws `CheckedFromJsonException`, so a malformed row becomes an `Err` here rather than a model the rest of the app trusts. Catch `on Exception`, never everything: a bug in your own code throws an `Error`, which must still crash loudly. Everything arriving from the network or local storage passes through a `fromJson` before it becomes a model.
 
-`Err` carries the exception itself, not a message. The service turns a raw failure into a typed exception declared in `models/`, such as offline or session expired, and the repository returns it inside `Err`. The controller may branch on that type to choose what to show, which Law 12 leaves to the UI side. Turning it into text is parsing, and only `parseError` in `utils/error_handler.dart` does that.
+`Err` carries the exception itself, not a message. The raw client in `services/` puts a `.timeout(...)` on every call (Law 7) and throws a typed exception declared in `models/`, such as offline or session expired. The repository catches it and returns it inside `Err`: the repository is the service that Law 12 says must return a result. The controller branches on that type to choose what to show, and calls `parseError` in `utils/error_handler.dart` for the text of any state that came from an `Err`, the only place an error becomes a message and the place it is logged (Law 12). Wording for a state that came from no failure, such as a signed out notice, stays in the screen.
 
 ---
 
