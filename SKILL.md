@@ -345,7 +345,7 @@ A feature must not import from a sibling feature. When one needs something from 
 The outside world enters a feature through one declared surface. Everything else is private and may change freely. The door holds exports and no logic. Use the strongest sealing mechanism the language offers, not a barrel file by habit. The Step 0 table names the mechanism per language.
 
 ### 7. All external interaction goes through a service layer
-No UI, widget, screen, or route handler ever calls a database, HTTP client, or third party SDK directly. One layer owns that, and it is also the security gate.
+No UI, widget, screen, or route handler ever calls a database, HTTP client, or third party SDK directly. One layer owns that, and it is also the security gate. Every outside call carries a timeout, so a service that never answers becomes an error result and not an endless wait.
 
 ### 8. The client is never the authority
 Treat every request from an app, browser, or kiosk as if a hostile person wrote it by hand. Identity, role, and ownership come from the verified server session, never from a field the client sent.
@@ -360,7 +360,7 @@ Every value entering from outside is checked at the service edge before use or s
 Every environment value, key name, base URL, and flag flows through one typed module. No other file reads a raw environment value. A value every path needs is checked at startup, so a misconfiguration fails loudly at boot, not silently inside a feature. A value only one command or route needs, such as one mailer key, is checked by a config function that the one service calls, so the rest of the app still runs without it.
 
 ### 12. One error shape
-Services return a consistent result rather than throwing to the caller. The result type is declared once, in the type layer, and every service imports it. One place parses raw errors into clean messages. One place logs them. The UI decides how to show an error, never how to parse one. Where the language has a sum type, use it: a Dart `sealed` class, a TypeScript discriminated union, or a Python union of two dataclasses forces the caller to handle the failure branch, which a pair of optional fields does not.
+Services return a consistent result rather than throwing to the caller. The result type is declared once, in the type layer, and every service imports it. One place parses raw errors into clean messages. The same place logs them: the parser logs the raw error once, before it returns the clean message. The UI decides how to show an error, never how to parse one. Where the language has a sum type, use it: a Dart `sealed` class, a TypeScript discriminated union, or a Python union of two dataclasses forces the caller to handle the failure branch, which a pair of optional fields does not.
 
 ### 13. Length is a signal, not a law
 Roughly 400 lines for a file, roughly 120 for an orchestrator, roughly 30 for a function, is a prompt to check whether it took on a second responsibility. A long file that still does exactly one thing may stay long. `references/testing-and-exceptions.md` lists the cases where that is so.

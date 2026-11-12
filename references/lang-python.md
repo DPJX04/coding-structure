@@ -186,7 +186,7 @@ class Err:
 Result: TypeAlias = Ok[T] | Err
 ```
 
-Services are named functions, each handling its own failure and returning a `Result`. Type hints are not optional in a large codebase.
+Services are named functions, each handling its own failure and returning a `Result`. Type hints are not optional in a large codebase. Every outside call carries a timeout: `timeout=` on an HTTP call, and a connect and statement timeout where the pool is built (Law 7). `parse_error` logs the raw error with `logging` before it returns the message (Law 12).
 
 ```python
 # src/myapp/services/db_service.py
