@@ -81,6 +81,7 @@ Simplicity
 [ ] Every top-level function and method has a one-line comment saying what its name cannot
 [ ] Functions stay near 30 lines with at most two levels of nesting
 [ ] No helper, base class, or generic with only one caller
+[ ] No file that is one short function a neighbouring file's topic covers
 [ ] No dead code or commented out blocks
 ```
 

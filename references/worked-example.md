@@ -10,7 +10,7 @@ The stack is TypeScript and React, because it needs to be something. The Laws ar
 
 **Why build bottom up.** Each file below depends only on files already written. The project compiles at every step, and you never write an import to something that does not exist yet. This is the order Adding a New Feature and the refactor section both use, for the same reason.
 
-**Aliases used below.** `@domain/*`, `@utils/*`, `@config/*`, `@services/*`, `@components/*`, `@features/*`, all declared in `tsconfig.json` as shown in `lang-typescript.md`.
+**Aliases used below.** `@domain/*`, `@utils/*`, `@config/*`, `@services/*`, `@components/*`, `@features/*`, all declared in `tsconfig.app.json`, with `resolve.tsconfigPaths` on in `vite.config.ts`, as shown in `lang-typescript.md`.
 
 ---
 
@@ -58,6 +58,7 @@ export function formatMoney(amountCents: number, currency: string, locale: strin
 
 ```ts
 // src/utils/money.test.ts
+import { expect, test } from 'vitest';
 import { formatMoney } from './money';
 
 test('renders cents as a currency amount', () => {
@@ -68,6 +69,8 @@ test('renders cents as a currency amount', () => {
 ```
 
 The locale is a parameter, not a default. `Intl` with no locale reads the machine's, so the same test passes on your laptop and fails in CI. A function whose output depends on where it runs is a function you cannot write a test for.
+
+The Vite template ships no test runner. Add Vitest, and import `test` and `expect` as shown: Vitest has no globals by default, and the template's `tsc -b` checks test files too.
 
 ```ts
 // src/utils/errorHandler.ts
@@ -135,7 +138,8 @@ export async function fetchInvoices(): Promise<Result<Invoice[]>> {
   try {
     const res = await fetch(`${config.apiUrl}/invoices`, { credentials: 'include' });
     if (!res.ok) return { ok: false, error: parseError(res) };
-    const body = (await res.json()) as unknown[];
+    const body: unknown = await res.json();
+    if (!Array.isArray(body)) return { ok: false, error: 'Unexpected response from the server' };
     return { ok: true, data: body.map(toInvoice) };
   } catch (cause) {
     return { ok: false, error: parseError(cause) };
@@ -172,7 +176,7 @@ In a real project a schema library does `toInvoice` better than hand written che
 
 ```ts
 // src/features/invoices/useInvoices.ts
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchInvoices, markInvoicePaid } from '@services/invoiceService';
 import type { Invoice } from '@domain/invoice';
 
@@ -181,10 +185,13 @@ export function useInvoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const latestLoad = useRef(0);
 
   const load = useCallback(async () => {
+    const thisLoad = ++latestLoad.current;
     setLoading(true);
     const result = await fetchInvoices();
+    if (thisLoad !== latestLoad.current) return; // a newer load or an unmount made this answer stale
     if (result.ok) {
       setInvoices(result.data);
       setError(null);
@@ -194,7 +201,10 @@ export function useInvoices() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { latestLoad.current += 1; };
+  }, [load]);
 
   async function pay(id: string) {
     const result = await markInvoicePaid(id);
@@ -210,6 +220,8 @@ export function useInvoices() {
 ```
 
 This state belongs to one feature, so it stays inside that feature. The day a second feature needs the invoice list, this hook moves to `hooks/` as a shared cache over the service, and not before. It does not go to the store layer: Law 1 says a cache of server data is a thin wrapper over the service, not a store.
+
+The counter is the cleanup React asks of every fetch in an effect: only the newest load may write state, so two loads that finish out of order cannot show an old list.
 
 Notice it decides nothing about appearance. It exposes `error` as a string and lets the screen decide whether that is a toast, a banner, or a retry button. And because `Result` is a discriminated union, the compiler will not let it read `result.data` until it has checked `result.ok`.
 

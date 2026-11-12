@@ -65,11 +65,18 @@ import { fetchSlots } from '@services/bookingService';
 
 /** Caches the slots for one date, fetched through the booking service. */
 export function useSlots(date: string) {
-  return useQuery({ queryKey: ['slots', date], queryFn: () => fetchSlots(date) });
+  return useQuery({
+    queryKey: ['slots', date],
+    queryFn: async () => {
+      const result = await fetchSlots(date);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+  });
 }
 ```
 
-The library shown is one example. Swap it for any cache, keep the shape.
+The library shown is one example. Swap it for any cache, keep the shape. A cache marks a query as failed only when its function throws, so the hook turns a failed `Result` back into a throw. This is the one place that happens.
 
 ---
 
@@ -92,6 +99,8 @@ export { AuthScreen } from './AuthScreen';
 
 The screen is the whole contract; `useAuth` stays private, because nothing above a feature should reach its hook (session state two features need lives in the store layer, not behind one feature's door). Outside code imports from `features/auth`, never from `features/auth/authValidator`. That is what lets you rewrite the internals without breaking a caller.
 
+Field rules that a form shows and a service enforces are written once, as pure functions or a schema, in `utils/`, such as `src/utils/bookingRules.ts`. The form calls them to show a message beside each field. The service calls the same rules as its gate before it sends anything. The client check helps the person typing. It never replaces the check at the edge.
+
 ### Orchestrator rules
 - Imports and composes sub components and hooks.
 - May hold local UI state.
@@ -99,7 +108,7 @@ The screen is the whole contract; `useAuth` stays private, because nothing above
 - Past roughly 120 lines, extract a sub component or hook (Law 13).
 
 ### Barrel cost, worth knowing
-One barrel per feature is correct. A barrel in every folder is not. Deep barrel chains cause circular imports, break tree shaking, and slow down dev server reloads. Keep exactly one barrel per feature and none anywhere else.
+One barrel per feature is a deliberate trade: bundlers advise against barrel files, and one small door is the price of a sealed feature. Write it as named re-exports, never `export *`. A barrel in every folder is not acceptable. Deep barrel chains cause circular imports, break tree shaking, and slow down dev server reloads. Keep exactly one barrel per feature and none anywhere else.
 
 ---
 
@@ -118,6 +127,8 @@ One barrel per feature is correct. A barrel in every folder is not. Deep barrel 
 | Public door | `index.ts` | barrel only, never logic |
 | Function | camelCase, verb first | `fetchSlots`, `formatMoney` |
 | Function comment | one line `/** */` above every function | `/** Fetches the open slots for one date. */` |
+
+Never put two files in one folder whose names differ only in case or extension, such as `expenseForm.ts` beside `ExpenseForm.tsx`. macOS and Windows ignore case, and resolvers try `.ts` before `.tsx`, so `./ExpenseForm` can load the wrong file there and the right one on Linux. Name the second file for its job, such as `expenseRules.ts`.
 
 ---
 
@@ -141,10 +152,12 @@ import { parseError } from '@utils/errorHandler';
 import type { Result } from '@domain/result';
 import type { Slot } from '@domain/booking';
 
-/** Checks one raw row and returns it as a Slot, or throws if the id is missing. */
+/** Checks one raw row field by field and returns it as a Slot, or throws. */
 function toSlot(raw: unknown): Slot {
   const row = raw as Record<string, unknown>;
-  if (typeof row?.id !== 'string') throw new Error('Slot is missing an id');
+  for (const key of ['id', 'date'] as const) {
+    if (typeof row?.[key] !== 'string') throw new Error(`Slot ${key} is missing`);
+  }
   return row as Slot;
 }
 
@@ -160,7 +173,7 @@ export async function fetchSlots(date: string): Promise<Result<Slot[]>> {
 }
 ```
 
-`dbClient.ts` sits beside it in `services/`: it builds the client once from `config`, because the service layer owns every external client (Law 7). `toSlot` is the Law 10 gate: rows are checked here, before anything above this layer sees them. Imports cross layers by alias rather than by `../`, so the layer is visible in the import line and a moved file does not change it. The client shown is one example. Swap it for any backend, keep the shape.
+`dbClient.ts` sits beside it in `services/`: it builds the client once from `config`, because the service layer owns every external client (Law 7). `toSlot` is the Law 10 gate: every field the type declares is checked here, before anything above this layer sees them. Imports cross layers by alias rather than by `../`, so the layer is visible in the import line and a moved file does not change it. The client shown is one example. Swap it for any backend, keep the shape.
 
 ---
 
@@ -182,7 +195,7 @@ export const config = {
 } as const;
 ```
 
-Read each variable by its literal name, and pass the name in as a second argument only so the error message can say it. A helper that does `process.env[name]` with a variable key looks tidier and does not work: Metro, Vite, and Webpack replace `process.env.SOMETHING` and `import.meta.env.SOMETHING` by matching that exact text at build time. There is no environment object left at runtime to index into, so every lookup returns `undefined` and a config module written that way throws on every variable in a production build. Use `import.meta.env.VITE_X` on Vite and `process.env.EXPO_PUBLIC_X` on Expo, always spelled out.
+Read each variable by its literal name, and pass the name in as a second argument only so the error message can say it. A helper that does `process.env[name]` with a variable key looks tidier and does not work everywhere: Metro and Next.js replace `process.env.SOMETHING` by matching that exact text at build time. A lookup by a variable key is not replaced, so it returns `undefined` in the bundle and a config module written that way throws on every variable in a production build. Vite inlines the whole `import.meta.env` object, so a variable key happens to work there, but the spelled out name works on every bundler. Use `import.meta.env.VITE_X` on Vite and `process.env.EXPO_PUBLIC_X` on Expo, always spelled out.
 
 On React Native and any web bundler, remember that everything in the bundle is readable. `EXPO_PUBLIC_` and `NEXT_PUBLIC_` values are shipped to the user. Law 9: never put a secret behind one.
 
@@ -230,41 +243,44 @@ Do not rely on discipline. Fail the build.
 Path aliases first, so imports read as layers:
 
 ```json
-// tsconfig.json
+// tsconfig.json, or the file it references whose "include" covers src/ (tsconfig.app.json on Vite)
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@features/*":   ["src/features/*"],
-      "@services/*":   ["src/services/*"],
-      "@components/*": ["src/components/*"],
-      "@hooks/*":      ["src/hooks/*"],
-      "@store/*":      ["src/store/*"],
-      "@utils/*":      ["src/utils/*"],
-      "@constants/*":  ["src/constants/*"],
-      "@config/*":     ["src/config/*"],
-      "@domain/*":     ["src/types/*"]
+      "@features/*":   ["./src/features/*"],
+      "@services/*":   ["./src/services/*"],
+      "@components/*": ["./src/components/*"],
+      "@hooks/*":      ["./src/hooks/*"],
+      "@store/*":      ["./src/store/*"],
+      "@utils/*":      ["./src/utils/*"],
+      "@constants/*":  ["./src/constants/*"],
+      "@config/*":     ["./src/config/*"],
+      "@domain/*":     ["./src/types/*"]
     }
   }
 }
 ```
 
+`paths` resolve from the tsconfig file itself, so every target starts with `./`. Do not add `baseUrl`: TypeScript 6 deprecates it and TypeScript 7 removes it. When `tsconfig.json` only lists `references` and `"files": []`, as Vite's template does, `paths` placed there apply to nothing.
+
 Declare an alias for every layer you import across, or the aliased imports and the relative ones will sit side by side and neither reads as a layer.
 
 Name the types alias `@domain/*` or `@apptypes/*`, never `@types/*`: `node_modules/@types` is where DefinitelyTyped lives, so that prefix already means something to every reader and to some tools, and you are one `import type { X } from '@types/node'` away from an ambiguous specifier.
 
-Whatever you choose, every tool that resolves modules needs the same list: `tsconfig.json`, plus the Vite, Webpack, or Metro config, plus Jest's `moduleNameMapper`. An alias that exists in only one of them fails at the least convenient moment.
+Whatever you choose, every tool that resolves modules needs the same list: `tsconfig.json`, plus the Vite, Webpack, or Metro config, plus Jest's `moduleNameMapper`. On Vite, set `resolve: { tsconfigPaths: true }` in `vite.config.ts`. Without it the production build may resolve the aliases while the dev server does not. An alias that exists in only one of them fails at the least convenient moment.
 
-Then block every illegal direction from the map above with `eslint-plugin-boundaries`, or with the built in `import/no-restricted-paths` from `eslint-plugin-import`. Both resolve import paths through a resolver, and the default one does not understand `tsconfig` paths: install `eslint-import-resolver-typescript` and point it at `tsconfig.json`, otherwise every `@services/*` style import is unresolvable and the rule skips it without a word. One zone per layer, listing what that layer may not import:
+Then block every illegal direction from the map above with `eslint-plugin-boundaries`, or with the built in `import/no-restricted-paths` from `eslint-plugin-import`. Both resolve import paths through a resolver, and the default one does not understand `tsconfig` paths: install `eslint-import-resolver-typescript` and point it at `tsconfig.json`, otherwise every `@services/*` style import is unresolvable and the rule skips it without a word. ESLint cannot read TypeScript on its own, so the config also sets the parser from `typescript-eslint`. Check the peer ranges of `typescript-eslint` and `eslint-plugin-import` against the project's TypeScript and ESLint versions before installing. A scaffold may ship a different linter, such as oxlint. The boundary rule then needs ESLint added beside it. One zone per layer, listing what that layer may not import:
 
 ```js
 // eslint.config.js
 // target = the layer being restricted, from = what it may not import
 import importPlugin from 'eslint-plugin-import';
+import tseslint from 'typescript-eslint';
 
 export default [
   {
     files: ['src/**/*.{ts,tsx}'],
+    languageOptions: { parser: tseslint.parser },
     plugins: { import: importPlugin },
     settings: {
       'import/resolver': { typescript: { project: './tsconfig.json' } },
@@ -282,14 +298,21 @@ export default [
           { target: './src/config',     from: ['./src'], except: ['./config'] },
           { target: './src/constants',  from: ['./src'], except: ['./constants'] },
           { target: './src/types',      from: ['./src'], except: ['./types'] },
+          // one zone per feature, so no feature imports a sibling
+          { target: './src/features/auth',         from: './src/features', except: ['./auth'] },
+          { target: './src/features/bookingSlots', from: './src/features', except: ['./bookingSlots'] },
         ],
+      }],
+      // outside code enters a feature through its index.ts only
+      'no-restricted-imports': ['error', {
+        patterns: [{ group: ['@features/*/*'], message: 'Import a feature through its index.ts.' }],
       }],
     },
   },
 ];
 ```
 
-`except` paths are relative to `from`. Prove the rule is live before trusting it: add one deliberately illegal aliased import, run the linter, and watch it fail. Blocking sibling feature imports and deep imports past a barrel needs `eslint-plugin-boundaries`, which understands element types rather than raw paths. Add it on any codebase with more than a handful of features.
+`except` paths are relative to `from`. Prove the rule is live before trusting it: add one deliberately illegal aliased import, run the linter, and watch it fail. Add a feature zone with each new feature. On a codebase with many features, `eslint-plugin-boundaries` replaces that list with element types matched by folder pattern.
 
 ---
 
@@ -312,7 +335,7 @@ End to end flows live in a top level `e2e/`, because they cross features.
 
 Everything above applies, with three swaps for a project with no TypeScript and no bundler, such as a Node CLI:
 
-- **Aliases** come from the `"imports"` field in `package.json`, which Node resolves natively: `"#services/*": "./src/services/*"`, imported as `#services/invoiceService.js`. Check that the boundary check resolves them, or keep relative imports.
+- **Aliases** come from the `"imports"` field in `package.json`, which Node resolves natively: `"#services/*": "./src/services/*"`, imported as `#services/invoiceService.js`. The default resolver of `eslint-plugin-import` does not read the `"imports"` field and skips those imports without a word. Set `'import/resolver': { typescript: true }`, which does, or keep relative imports.
 - **The type layer** holds JSDoc `@typedef` comments and nothing that runs. Plain functions that build a `Result` live in `utils/`.
 - **Env files** load with `process.loadEnvFile()` on Node 20.12 and later, called once inside the config module. It throws when the file is missing, so check `existsSync('.env')` first; a fresh clone with no `.env` should still run every command that needs no secret (Law 11).
 
@@ -334,16 +357,16 @@ src/
 └── ...
 ```
 
-A `page.tsx` should be a few lines that import a feature's public door and render it. Server actions and route handlers belong to the service layer in spirit, so keep the data logic in `src/services/` and let the route handler call it.
+A `page.tsx` should be a few lines that import a feature's public door and render it. Server actions and route handlers belong to the service layer in spirit, so keep the data logic in `src/services/` and let the route handler call it. Anyone can POST to a server action directly, and a check on the page does not cover it. Each action checks the session (Law 8) and validates its input (Law 10) itself. Start a service file that must never reach the browser with `import 'server-only'`.
 
 ### Expo Router
-Same idea. `app/` is file based routing. Keep `src/features/` beside it and let each route render one feature.
+Same idea. Current templates put the file based routes in `src/app/`; older projects have `app/` at the root. Every file in it becomes a route, so keep `src/features/` beside it and let each route render one feature.
 
 ```
-app/
-├── _layout.tsx
-├── index.tsx           # imports and renders BookingScreen from features/bookingSlots
 src/
+├── app/
+│   ├── _layout.tsx
+│   └── index.tsx       # imports and renders BookingScreen from features/bookingSlots
 ├── features/
 └── ...
 ```

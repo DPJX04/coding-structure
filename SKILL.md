@@ -39,7 +39,7 @@ Only four decisions and the folder names are language specific. Everything else 
 |---|---|---|---|---|
 | TypeScript, JavaScript | one barrel `index.ts` (`index.js` in plain JavaScript) per feature, no barrels elsewhere | `eslint-plugin-boundaries`, or `import/no-restricted-paths` | PascalCase components, camelCase for everything else | beside the file as `*.test.ts`, end to end in a top level `e2e/` |
 | Python | thin `__init__.py` re-export with `__all__`, underscore prefix on private modules | `import-linter` | snake_case modules and packages, PascalCase classes | top level `tests/` mirroring the package |
-| Dart, Flutter | one barrel `.dart` file per feature, underscore prefix on private members | a `custom_lint` rule or analyzer plugin for banned imports, CI grep as fallback | snake_case files, PascalCase classes | top level `test/` mirroring `lib/` |
+| Dart, Flutter | one barrel `.dart` file per feature, underscore prefix on private members | an analyzer plugin under `plugins:` that bans imports per folder, such as `dart_code_linter`'s `avoid-banned-imports`, CI grep as fallback | snake_case files, PascalCase classes | top level `test/` mirroring `lib/` |
 
 ### The folder tree per language
 
@@ -78,8 +78,7 @@ lib/
 ├── main.dart, app.dart  entry files
 ├── features/<name>/     <name>.dart is its door
 ├── widgets/             shared UI
-├── state/               only when two features share state
-├── repositories/        domain data access
+├── repositories/        domain data and app wide state
 ├── services/            raw external clients
 ├── utils/               pure helpers
 ├── models/              shared types and Result
@@ -106,7 +105,7 @@ Skip this step in Changing Existing Code; that project's size is already settled
 
 Structure costs reading time too. Build only as much of it as the code needs today.
 
-A **feature** is one domain noun the user works with, such as invoices, bookings, or reminders, together with every screen, command, or endpoint that acts on it. Listing, paying, and totalling invoices is one feature. Count nouns, not commands. A command belongs to the noun it acts on: reminders about overdue invoices are part of invoices until reminders get screens or commands of their own. A noun the user only sees through another noun, such as the client named on an invoice, is part of that feature even when it has its own data.
+A **feature** is one domain noun the user works with, such as invoices, bookings, or reminders, together with every screen, command, or endpoint that acts on it. Listing, paying, and totalling invoices is one feature. Count nouns, not commands. A command belongs to the noun it acts on: reminders about overdue invoices are part of invoices until reminders get screens or commands of their own. A list, filter, or total of a noun stays with that noun. A command that uses one noun to produce a different thing, such as an answer written from saved documents, is a feature of its own, named for what it produces. A noun the user only sees through another noun, such as the client named on an invoice, is part of that feature even when it has its own data.
 
 | Size | What it looks like | What you build |
 |---|---|---|
@@ -158,9 +157,10 @@ Bottom up, the same order the refactor section uses: each file imports only file
 8. Declare the public door using the language's sealing mechanism.
 9. Mount it: the route or entry point imports the public door and renders it.
 10. **Check the Laws that catch most mistakes.** Each file has a one-sentence job (Law 2). The orchestrator only composes (Law 4). No import reaches a sibling feature (Law 5). Every DB, HTTP, and SDK call sits in a service (Law 7), which validates outside input (Law 10) and returns the one error shape (Law 12). Env values come only from the config module (Law 11). Run the boundary check if the project has one; a small app with one feature checks these imports by reading them.
-11. **Check placement and simplicity.** List the tree of every file you created or changed, and confirm each sits in its layer folder, with nothing new in the source root or in a framework folder. Then check every function against Law 0. Show the user the final tree.
+11. **Check placement and simplicity.** List the tree of every file you created or changed, and confirm each sits in its layer folder, with nothing new in the source root or in a framework folder. Then check every function against Law 0. Then follow one flow from the entry file down to the data and count the files you open: about one per layer the flow crosses, and more than that is the short-file signal in Law 13. Show the user the final tree.
+12. **Write or update the README.** It is the overview that shows a new programmer, a reviewer, or a manager what the project is and where to start, in five short parts: what the app does, in plain words; how to run it and its tests; the folder map, one line per layer folder; one request traced from the entry file down to the data, naming each file it passes, which is where to start reading; where new code goes. Describe folders, not every file, so it stays true as files are added.
 
-Commit after each layer, so every commit compiles. **Done when** the feature runs from its route, its tests pass, the boundary check (where one exists) passes with no new violations, steps 10 and 11 hold for every new file, and the user has seen the tree.
+Commit after each layer, so every commit compiles. **Done when** the feature runs from its route, its tests pass, the boundary check (where one exists) passes with no new violations, steps 10 and 11 hold for every new file, the README matches the code, and the user has seen the tree.
 
 `references/worked-example.md` runs one feature through these steps in this order, plus the config module a new project builds once, showing the actual files as you would write them.
 
@@ -168,7 +168,7 @@ Commit after each layer, so every commit compiles. **Done when** the feature run
 
 ## Starting a New Project
 
-This is the full app procedure. A small app runs steps 1 to 4 and step 7, and creates layer folders as files need them. A script needs step 2 only.
+This is the full app procedure. A small app runs steps 1 to 4 and step 7, adds step 5 before it writes its second feature, and creates layer folders as files need them. A script needs step 2 only.
 
 The order matters more than the speed. Installing the boundary check on day one takes ten minutes while the violation count is zero. Retrofitting it at forty files takes a weekend.
 
@@ -226,7 +226,7 @@ Each layer you move is only depended on by things above it, so the project keeps
 
 **Bugs found on the way** are fixed after the moves, each in its own commit unless a signature change in the simplify phase already fixed it, and listed to the user at the end as behaviour changes, including any error message that now reads differently or any failure the services now report instead of crashing. Behaviour that might be intended, such as which records count as overdue, is a question for the user, not a fix.
 
-**Done when** the boundary check, where the size calls for one, runs at error with zero violations, the app runs and matches the baseline apart from the listed bug fixes, the source root holds entry files only, every file sits in its layer folder, and no commit mixes a move with a content change.
+**Done when** the boundary check, where the size calls for one, runs at error with zero violations, the app runs and matches the baseline apart from the listed bug fixes, the source root holds entry files only, every file sits in its layer folder, the README's folder map matches the new layout, and no commit mixes a move with a content change.
 
 ---
 
@@ -249,8 +249,8 @@ Is it state that outlives one screen?
   ├─ Used by two or more features    → store layer
   └─ A cache of data from a service  → thin wrapper over the service layer, no rules in it
 
-Is it a pure helper that knows nothing about any feature: money, dates, strings, error parsing?
-  └─ YES → shared logic layer, even with one caller
+Is it a pure helper another project could use unchanged: money, dates, strings, error parsing?
+  └─ YES → shared logic layer, even with one caller, in the file for its topic
 
 Is it used by two or more features?
   ├─ Pure logic that knows a domain rule → shared logic layer
@@ -258,7 +258,7 @@ Is it used by two or more features?
   └─ UI element → shared UI layer
 
 Is it used by exactly one feature?
-  └─ Stays inside that feature, in a private file named for its job
+  └─ Stays inside that feature, in a private file named for its topic
 
 Is it the entry point of a feature?
   └─ It is the orchestrator, keep it thin
@@ -275,7 +275,7 @@ These hold everywhere. No folder names appear here on purpose. This section is t
 ### 0. Simple code first
 Code is read far more often than it is written. Write for the person who opens the file next month. Law 0 decides how code is written; the other Laws decide where it lives. Laws 8, 9, and 10 still hold in full.
 
-- **One function, one job.** Its job fits in one sentence without the word `and`, the same test Law 2 applies to a file. A list of things one verb covers is fine: "formats the row, header, and total" is one job. Two verbs joined by `and` are two jobs.
+- **One function, one job.** Its job fits in one sentence without the word `and`. A list of things one verb covers is fine: "formats the row, header, and total" is one job. Two verbs joined by `and` are two jobs.
 - **A name that says exactly what it does.** Verb plus object for functions: `fetchInvoices`, `formatMoney`, `validate_booking`. A yes or no question for booleans: `isPaid`, `has_access`. If the honest name needs a generic word to cover several jobs, split the function.
 - **A one-line doc comment on every top-level function, method, and class.** Say what the name alone cannot: the unit, an example, the rule it enforces, or what comes back on failure. Use the language's own form: `/** */` above the line in TypeScript and JavaScript, `///` above it in Dart, a docstring as the first line of the body in Python. Test cases, inline callbacks, nested helpers, and door files need none; a test's name is its comment. Inside a body, comment only the reason behind something surprising.
 - **Short and flat.** Roughly 30 lines, two levels of nesting at most. Return early so the main path reads straight down.
@@ -326,17 +326,17 @@ The folder name is yours. `store/`, `contexts/`, `providers/`, `state/` are all 
 If your project has no store, the layer simply does not exist and everything above collapses one step. Create one when two features share state.
 
 ### 2. One responsibility per file
-Describe each file's job in one sentence without the word `and`; when you cannot, split it. Name each file for its one job. A `helpers` or `utils` file inside a feature is the usual way this law gets broken.
+A file's job is one topic: it holds every function that works on the same thing, the way one `citations` file finds, checks, and prints citations. Describe that topic in one sentence; when the sentence needs an `and` to join two unrelated things, split the file. Name each file for its topic. A `helpers` or `utils` file inside a feature is the usual way this law gets broken.
 
 ### 3. A new job gets a new file, in its layer folder
-A new capability gets its own file when it is a separate job: a new component, a new service domain, a new validator. A function that shares an existing file's one-sentence job joins that file, such as `cancelBooking` beside `createBooking` in the booking service. A private helper used by one function stays in the same file, just below the function that calls it. The test after any addition: the file still fits its one sentence without an `and`.
+A new capability gets its own file when it is a separate topic: a new component, a new service domain, a feature's rules. A function that shares an existing file's one-sentence job joins that file, such as `cancelBooking` beside `createBooking` in the booking service. A feature's private logic starts in one file, and a second file appears when a second topic has grown several functions of its own. A private helper used by one function stays in the same file, just below the function that calls it. The test after any addition: the file still fits its one sentence without an `and`.
 
 A new file goes into the folder for its layer, found with Where Does This Code Go? and named with the Step 0 tree. Many small files read well only when folders sort them.
 
 A folder whose files do different jobs, such as a service beside a screen beside a helper, is a dumping ground. Split it by layer, then by feature.
 
 ### 4. The entry point orchestrates, never implements
-The screen, widget, route handler, or module entry composes things. It does not define them. No business rules, no raw client calls, no formatting. What it pulls out goes into the feature's private files grouped by job, not one file per function: all of a feature's display formatting can share one formatter file. It calls the UI logic layer where one exists; where the stack has no UI logic layer between entry point and service, such as a backend route handler, it calls one service function and returns. In a command-line app, the entry file parses the arguments and calls one door function per command; parsing arguments is composition, not implementation.
+The screen, widget, route handler, or module entry composes things. It does not define them. No business rules, no raw client calls, no formatting. What it pulls out goes into the feature's private files grouped by topic, not one file per function: a small feature's checks and formatting share one file. It calls the UI logic layer where one exists; where the stack has no UI logic layer between entry point and service, such as a backend route handler, it calls the service functions the job needs and returns. In a command-line app, the entry file parses the arguments and calls one door function per command; parsing arguments is composition, not implementation.
 
 ### 5. Features never touch each other
 A feature must not import from a sibling feature. When one needs something from another, there are three paths: move the shared work down into a service, move the shared shape into the type layer, or use an event so the sender does not know who listens. A shared store is not a fourth path. Writing to a store in feature A so feature B can read it is a sibling import with extra steps: the coupling is still there, it has just left the import line where a lint rule could catch it.
@@ -354,7 +354,7 @@ Treat every request from an app, browser, or kiosk as if a hostile person wrote 
 A public client key may ship. Any admin key, service key, or paid third party key must live only on a server. A mobile app bundle is not private. An APK can be unzipped, an IPA can be dumped, a JS bundle can be read in dev tools, a compile time constant is recoverable from all three. If a client needs a paid API, it calls your server and your server holds the key. `references/architecture-maturity.md` has the table sorting each kind of key to where it may live.
 
 ### 10. Validate at the boundary
-Every value entering from outside is checked at the service edge before use or storage. Past the gate, code trusts its inputs. Before the gate, it trusts nothing. Public paths with no login also need rate limiting.
+Every value entering from outside is checked at the service edge before use or storage. Past the gate, code trusts its inputs. Before the gate, it trusts nothing. Where a form shows the same checks beside its fields, write the rules once in the shared logic layer: the form calls them to show its messages, and the service calls them as the gate. A typed request model, kept in the type layer and checked by the framework before the handler runs, is part of the gate: shape and range rules go on the model, and the service keeps the checks that need data. Public paths with no login also need rate limiting.
 
 ### 11. One config source
 Every environment value, key name, base URL, and flag flows through one typed module. No other file reads a raw environment value. A value every path needs is checked at startup, so a misconfiguration fails loudly at boot, not silently inside a feature. A value only one command or route needs, such as one mailer key, is checked by a config function that the one service calls, so the rest of the app still runs without it.
@@ -364,6 +364,8 @@ Services return a consistent result rather than throwing to the caller. The resu
 
 ### 13. Length is a signal, not a law
 Roughly 400 lines for a file, roughly 120 for an orchestrator, roughly 30 for a function, is a prompt to check whether it took on a second responsibility. A long file that still does exactly one thing may stay long. `references/testing-and-exceptions.md` lists the cases where that is so.
+
+A short file is a signal too. One that holds a single function, or runs under roughly 30 lines, is a prompt to check whether it is a piece of a neighbouring file's topic. Picture it merged into the file that uses it: when nothing becomes harder to find, merge it. Doors, the config module, type files, and a shared client file are short by nature.
 
 ### 14. Test by risk and by layer
 Spend most effort on the shared logic and service layers, which are pure or near pure and hold the logic that matters. Spend least on screens and widgets, which change often and produce brittle tests. Cover those with a few end to end flows. `references/testing-and-exceptions.md` has the order to write them in.

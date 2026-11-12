@@ -15,17 +15,16 @@ project_root/
 ├── src/
 │   └── myapp/                      # the package, this name is what you import
 │       ├── __init__.py             # thin, exports the app's public surface
+│       ├── __main__.py             # entry: python -m myapp, checks settings at startup
 │       ├── features/
 │       │   ├── __init__.py
 │       │   └── booking/
 │       │       ├── __init__.py     # the public door, re-exports only
 │       │       ├── orchestrator.py # entry point for the feature
-│       │       ├── _validator.py   # private, leading underscore
-│       │       ├── _processor.py
-│       │       └── _formatter.py
+│       │       └── _rules.py       # private, leading underscore: the feature's checks and formatting
 │       ├── services/
 │       │   ├── __init__.py
-│       │   ├── db.py               # connection pool, built once from settings
+│       │   ├── db.py               # get_pool(): builds the pool on first call, then reuses it
 │       │   ├── db_service.py
 │       │   └── email_service.py
 │       ├── utils/
@@ -40,6 +39,7 @@ project_root/
 │           ├── __init__.py
 │           └── settings.py         # the only file that reads raw env
 ├── tests/                          # mirrors src/myapp/
+│   ├── __init__.py
 │   ├── services/test_db_service.py
 │   └── utils/test_date_utils.py
 └── scripts/                        # seeds, migrations, one off tooling
@@ -84,16 +84,16 @@ utils/     can use →  domain only
 domain/    can use →  nothing
 ```
 
-There is no UI logic layer in a backend, so the feature's entry point composes its private helpers and its one service call directly, per Law 4: it may call them, it defines none of them.
+There is no UI logic layer in a backend, so the feature's entry point composes its private helpers and its service calls directly, per Law 4: it may call them, it defines none of them.
 
 ### Why there is no store layer here
 
-A server handles one request at a time and forgets it. There is usually no state that outlives a request, so the store layer from the Laws simply does not exist in a Python backend and you should not create a folder for it.
+A server keeps no state between requests. There is usually no state that outlives a request, so the store layer from the Laws simply does not exist in a Python backend and you should not create a folder for it.
 
 Two things get mistaken for one:
 
 - **Request scoped state.** A user, a tenant, a correlation id. Pass it as an argument, or use a framework dependency such as FastAPI's `Depends`. Never a module level global, which is shared across every request in the process and is a data leak between users waiting to happen.
-- **Process wide caches and connection pools.** These belong in `services/`, created once at startup and injected, because the service layer owns every external client (Law 7) and `config/` imports nothing. They are infrastructure, not application state.
+- **Process wide caches and connection pools.** These belong in `services/`, built once on first use by a cached function such as `db.get_pool()`, because the service layer owns every external client (Law 7) and `config/` imports nothing. They are infrastructure, not application state.
 
 If a long running worker or a desktop app genuinely does hold state across time, apply the store rules from Law 1 and put it in its own module above `services/`.
 
@@ -117,29 +117,32 @@ __all__ = ["create_booking", "cancel_booking"]
 
 ```python
 # src/myapp/features/booking/orchestrator.py
-from myapp.services.db_service import insert_booking
 from myapp.domain.booking import Confirmation
 from myapp.domain.result import Err, Ok, Result
-from ._validator import validate_booking
-from ._formatter import to_confirmation
+from myapp.services import db_service
+from . import _rules
 
 def create_booking(user_id: str, slot_id: str) -> Result[Confirmation]:
     """Validate and save one booking, returning its confirmation or an error."""
-    error = validate_booking(user_id, slot_id)
+    error = _rules.validate_booking(user_id, slot_id)
     if error:
         return Err(error)
 
-    result = insert_booking(user_id, slot_id)
+    result = db_service.insert_booking(user_id, slot_id)
     if isinstance(result, Err):
         return result
 
-    return Ok(to_confirmation(result.data))
+    return Ok(_rules.to_confirmation(result.data))
 ```
+
+Import the module and call `module.function`: `db_service.insert_booking` shows the reader where the function lives, and the import block stays one line per module. Types are imported by name, which PEP 8 allows. Group imports as PEP 8 does: standard library, then third party, then this project, with a blank line between groups.
+
+`_rules.py` holds every private function of this feature, per Law 3. It splits when a second topic has grown several functions of its own, each new file named for its topic.
 
 ### Sealing
 Python cannot enforce privacy, so it relies on two conventions and one tool:
 
-1. Leading underscore on private modules and functions. `_validator.py` signals internal.
+1. Leading underscore on private modules and functions. `_rules.py` signals internal.
 2. `__all__` in the door, which declares the public surface.
 3. `import-linter`, which fails the build on an illegal import. See below.
 
@@ -150,7 +153,7 @@ Python cannot enforce privacy, so it relies on two conventions and one tool:
 | Type | Convention | Example |
 |---|---|---|
 | Module | snake_case | `slot_validator.py` |
-| Private module | leading underscore | `_processor.py` |
+| Private module | leading underscore | `_rules.py` |
 | Package or folder | snake_case | `booking_slots/` |
 | Class | PascalCase | `BookingRequest` |
 | Function and variable | snake_case | `create_booking` |
@@ -188,10 +191,11 @@ Services are named functions, each handling its own failure and returning a `Res
 ```python
 # src/myapp/services/db_service.py
 from datetime import date as iso_date
-from myapp.services.db import pool
-from myapp.utils.error_handler import parse_error
+
 from myapp.domain.booking import Slot
 from myapp.domain.result import Err, Ok, Result
+from myapp.services import db
+from myapp.utils import error_handler
 
 def _to_slot(row: dict) -> Slot:
     """Check one raw row and return it as a Slot, or raise if the id is missing."""
@@ -203,13 +207,13 @@ def fetch_slots(date: str) -> Result[list[Slot]]:
     """Fetch every slot on one date. Returns Err instead of raising."""
     try:
         iso_date.fromisoformat(date)
-        with pool.connection() as conn:
+        with db.get_pool().connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM slots WHERE date = %s", (date,)
             ).fetchall()
         return Ok([_to_slot(row) for row in rows])
     except Exception as err:
-        return Err(parse_error(err))
+        return Err(error_handler.parse_error(err))
 ```
 
 `fromisoformat` and `_to_slot` are the Law 10 gate: input is rejected before it reaches SQL, and rows are checked before they become models. In a real project a pydantic model does `_to_slot` better; the point is that something checks. Law 8 in this stack: identity comes from the framework's verified session, `request.user` in Django or a FastAPI `Depends` that resolves the session, never from a field in the request body. An endpoint with no login gets a rate limiter such as `django-ratelimit` or `slowapi`.
@@ -218,52 +222,87 @@ def fetch_slots(date: str) -> Result[list[Slot]]:
 
 ## Config Pattern
 
-One typed settings module, validated on import, so a missing value fails at boot rather than inside a request.
+One typed settings module, read through a cached `get_settings()`. Nothing reads the environment at import, so any module imports cleanly in a test. The entry file calls `get_settings()` once at startup, so a missing value fails at boot rather than inside a request.
 
 ```python
 # src/myapp/config/settings.py
+from functools import cache
+
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     database_url: str
-    api_key: str
     is_prod: bool = False
+    mail_api_key: SecretStr | None = None  # only email_service needs it
 
-settings = Settings()  # raises immediately if a required value is missing
+@cache
+def get_settings() -> Settings:
+    """Read the env once. Raises RuntimeError naming each missing or bad value."""
+    try:
+        return Settings()
+    except ValidationError as err:
+        names = ", ".join(str(e["loc"][0]).upper() for e in err.errors())
+        raise RuntimeError(f"Missing or invalid env var: {names}") from None
+
+def get_mail_api_key() -> str:
+    """Return the mail key, or raise if it is unset. Only email_service calls this."""
+    key = get_settings().mail_api_key
+    if key is None:
+        raise RuntimeError("Missing required env var: MAIL_API_KEY")
+    return key.get_secret_value()
 ```
 
-Standard library only, the same module is a frozen dataclass built once:
+`mail_api_key` is Law 11's second half: a value only one service needs is optional, so the app runs without it, and that service checks it through `get_mail_api_key()`. `SecretStr` keeps the key out of logs and tracebacks.
+
+Standard library only, the same module is a frozen dataclass built by the same cached function:
 
 ```python
 # src/myapp/config/settings.py
 import os
 from dataclasses import dataclass
-
+from functools import cache
 
 @dataclass(frozen=True)
 class Settings:
-    """Every environment value the app reads, checked once at import."""
+    """Every environment value the app reads."""
     database_url: str
     is_prod: bool
 
-
 def _required(name: str) -> str:
-    """Return the env value, or stop the app at boot if it is missing."""
+    """Return the env value, or raise if it is missing."""
     value = os.environ.get(name)
     if not value:
         raise RuntimeError(f"Missing required env var: {name}")
     return value
 
-
-settings = Settings(
-    database_url=_required("DATABASE_URL"),
-    is_prod=os.environ.get("APP_ENV") == "production",
-)
+@cache
+def get_settings() -> Settings:
+    """Read the env once. Later calls return the same object."""
+    return Settings(
+        database_url=_required("DATABASE_URL"),
+        is_prod=os.environ.get("APP_ENV") == "production",
+    )
 ```
 
-No other module reads `os.environ`. The connection pool in `services/db.py` is built once from `settings.database_url` and imported by the other services.
+The entry file turns a missing value into one clean line and a non-zero exit:
+
+```python
+# src/myapp/__main__.py
+import sys
+
+from myapp.config import settings
+
+try:
+    settings.get_settings()
+except RuntimeError as err:
+    sys.exit(str(err))  # one line on stderr, exit code 1
+# start the server or command here
+```
+
+No other module reads `os.environ`. `services/db.py` exposes `get_pool()`, cached the same way, which builds the pool from `get_settings().database_url` on its first call. Services call it when they run, never at import.
 
 ---
 
@@ -295,9 +334,7 @@ layers =
 name = Features are independent
 type = independence
 modules =
-    myapp.features.booking
-    myapp.features.auth
-    myapp.features.notifications
+    myapp.features.*
 
 [importlinter:contract:config]
 name = Only services read config
@@ -322,7 +359,7 @@ forbidden_modules =
     myapp.domain
 ```
 
-The `layers` contract enforces the one way flow. The `independence` contract enforces that features never touch each other. The two `forbidden` contracts pin `config` down: only `services` reads it, and it reads nothing back. `allow_indirect_imports` is required on the first, because by default a forbidden contract also fails on the chain `features → services → config`, which is exactly the flow this layout prescribes. Run `lint-imports` in CI.
+The `layers` contract enforces the one way flow. The `independence` contract enforces that features never touch each other, and `myapp.features.*` picks up each new feature by itself. The two `forbidden` contracts pin `config` down: only `services` reads it, and it reads nothing back. `allow_indirect_imports` is required on the first, because by default a forbidden contract also fails on the chain `features → services → config`, which is exactly the flow this layout prescribes. Every module a contract names must exist, or `lint-imports` stops with an error, so add a layer to the contracts when you create its folder. Run `lint-imports` in CI.
 
 ---
 
@@ -339,9 +376,9 @@ tests/
 
 Spend effort on `utils/` and `services/`; `testing-and-exceptions.md` has the order to write them in.
 
-To point services at a throwaway database, have each service open its connection through one function in `services/db.py` that reads `settings` when called, not at import. A test then patches that one function, or sets the env value before importing `config.settings`, and every service follows.
+Settings are read when `get_settings()` is first called, never at import, so a test imports any service with no environment set. To point services at a throwaway database, patch `myapp.config.settings.get_settings` to return a test `Settings`, or set the env value and call `get_settings.cache_clear()`. Clear `db.get_pool` the same way, and every service follows.
 
-With `unittest` discovery and `-t .`, every folder under `tests/` needs an `__init__.py`, or its tests are skipped without a word.
+With `unittest` discovery and `-t .`, `tests/` and every folder under it need an `__init__.py`. Without one in `tests/`, discovery stops with an import error; without one in a subfolder, its tests are skipped without a word. With pytest, set `--import-mode=importlib` in its config, or two test files with the same name in different folders fail to collect.
 
 ---
 
