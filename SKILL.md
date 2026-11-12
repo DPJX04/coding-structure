@@ -323,7 +323,7 @@ Automate this with a **boundary check**. TypeScript and Python have a tool that 
 
 The folder name is yours. `store/`, `contexts/`, `providers/`, `state/` are all fine, and so is a library or the language's own built in mechanism. What matters is one place for it, with the arrows pointing the same way. Pick a name on day one and keep it, because two names for one layer is worse than either name.
 
-If your project has no store, the layer simply does not exist and everything above collapses one step. Create one when two features share state.
+If your project has no store, the layer simply does not exist and everything above collapses one step. Create one when two features share state. Where a framework's own guide gives shared state another home, the language reference says so and that home wins: Flutter keeps it in repositories.
 
 ### 2. One responsibility per file
 A file's job is one topic: it holds every function that works on the same thing, the way one `citations` file finds, checks, and prints citations. Describe that topic in one sentence; when the sentence needs an `and` to join two unrelated things, split the file. Name each file for its topic. A `helpers` or `utils` file inside a feature is the usual way this law gets broken.

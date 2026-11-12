@@ -71,7 +71,7 @@ models/        can use →  nothing
 
 ### State, and where it lives
 
-Flutter has no store layer, so there is no `state/` folder. Law 1 in `SKILL.md` lets that layer be absent, and app wide state takes Law 5's first path: it moves down into the repository that owns the data. The Flutter mechanics:
+Flutter has no store layer, so there is no `state/` folder. Law 1 in `SKILL.md` hands this choice to the framework's own guide, and Flutter's guide keeps app wide state in the repository that owns the data. Two features that read or change that state are both using the service layer, not each other, so Law 5 holds. The Flutter mechanics:
 
 - A controller belongs to one screen and stays in its feature, as `booking_controller.dart` shows above. Two screens that show the same data each keep their own controller.
 - App wide state, such as the signed in session or an in-memory cache, lives in the repository that owns that data. The repository exposes it as a `Stream` or a `Listenable`, and each controller that needs it listens.
