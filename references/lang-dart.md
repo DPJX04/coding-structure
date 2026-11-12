@@ -75,7 +75,7 @@ Flutter has no store layer, so there is no `state/` folder. Law 1 in `SKILL.md` 
 
 - A controller belongs to one screen and stays in its feature, as `booking_controller.dart` shows above. Two screens that show the same data each keep their own controller.
 - App wide state, such as the signed in session or an in-memory cache, lives in the repository that owns that data. The repository exposes it as a `Stream` or a `Listenable`, and each controller that needs it listens.
-- Repositories never import each other, which is narrower than Law 1 allows inside a layer. Logic that needs two of them takes both in the controller and combines them there.
+- Repositories never import each other, which is narrower than Law 1 allows inside a layer. Logic that needs two of them takes both in the controller and combines them there. A value every request needs, such as the session token, reaches the client as a callback that the owning repository sets on it.
 - Whatever the mechanism, a provider, a notifier, or a stream, the layer rule is the same. The mechanism is a detail. The direction of the arrow is not.
 
 ---
