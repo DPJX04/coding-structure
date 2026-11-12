@@ -108,7 +108,7 @@ Field rules that a form shows and a service enforces are written once, as pure f
 - Past roughly 120 lines, extract a sub component or hook (Law 13).
 
 ### Barrel cost, worth knowing
-One barrel per feature is correct. A barrel in every folder is not. Deep barrel chains cause circular imports, break tree shaking, and slow down dev server reloads. Keep exactly one barrel per feature and none anywhere else.
+One barrel per feature is a deliberate trade: bundlers advise against barrel files, and one small door is the price of a sealed feature. Write it as named re-exports, never `export *`. A barrel in every folder is not acceptable. Deep barrel chains cause circular imports, break tree shaking, and slow down dev server reloads. Keep exactly one barrel per feature and none anywhere else.
 
 ---
 
