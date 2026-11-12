@@ -169,7 +169,7 @@ Commit after each layer, so every commit compiles. **Done when** the feature run
 
 ## Starting a New Project
 
-This is the full app procedure. A small app runs steps 1 to 4 and step 7, adds step 5 when its second feature arrives, and creates layer folders as files need them. A script needs step 2 only.
+This is the full app procedure. A small app runs steps 1 to 4 and step 7, adds step 5 before it writes its second feature, and creates layer folders as files need them. A script needs step 2 only.
 
 The order matters more than the speed. Installing the boundary check on day one takes ten minutes while the violation count is zero. Retrofitting it at forty files takes a weekend.
 
