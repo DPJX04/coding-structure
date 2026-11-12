@@ -159,8 +159,9 @@ Bottom up, the same order the refactor section uses: each file imports only file
 9. Mount it: the route or entry point imports the public door and renders it.
 10. **Check the Laws that catch most mistakes.** Each file has a one-sentence job (Law 2). The orchestrator only composes (Law 4). No import reaches a sibling feature (Law 5). Every DB, HTTP, and SDK call sits in a service (Law 7), which validates outside input (Law 10) and returns the one error shape (Law 12). Env values come only from the config module (Law 11). Run the boundary check if the project has one; a small app with one feature checks these imports by reading them.
 11. **Check placement and simplicity.** List the tree of every file you created or changed, and confirm each sits in its layer folder, with nothing new in the source root or in a framework folder. Then check every function against Law 0. Then follow one flow from the entry file down to the data and count the files you open: about one per layer the flow crosses, and more than that is the short-file signal in Law 13. Show the user the final tree.
+12. **Write or update the README.** It is the overview that shows a new programmer, a reviewer, or a manager what the project is and where to start, in five short parts: what the app does, in plain words; how to run it and its tests; the folder map, one line per layer folder; one request traced from the entry file down to the data, naming each file it passes, which is where to start reading; where new code goes. Describe folders, not every file, so it stays true as files are added.
 
-Commit after each layer, so every commit compiles. **Done when** the feature runs from its route, its tests pass, the boundary check (where one exists) passes with no new violations, steps 10 and 11 hold for every new file, and the user has seen the tree.
+Commit after each layer, so every commit compiles. **Done when** the feature runs from its route, its tests pass, the boundary check (where one exists) passes with no new violations, steps 10 and 11 hold for every new file, the README matches the code, and the user has seen the tree.
 
 `references/worked-example.md` runs one feature through these steps in this order, plus the config module a new project builds once, showing the actual files as you would write them.
 
@@ -226,7 +227,7 @@ Each layer you move is only depended on by things above it, so the project keeps
 
 **Bugs found on the way** are fixed after the moves, each in its own commit unless a signature change in the simplify phase already fixed it, and listed to the user at the end as behaviour changes, including any error message that now reads differently or any failure the services now report instead of crashing. Behaviour that might be intended, such as which records count as overdue, is a question for the user, not a fix.
 
-**Done when** the boundary check, where the size calls for one, runs at error with zero violations, the app runs and matches the baseline apart from the listed bug fixes, the source root holds entry files only, every file sits in its layer folder, and no commit mixes a move with a content change.
+**Done when** the boundary check, where the size calls for one, runs at error with zero violations, the app runs and matches the baseline apart from the listed bug fixes, the source root holds entry files only, every file sits in its layer folder, the README's folder map matches the new layout, and no commit mixes a move with a content change.
 
 ---
 
