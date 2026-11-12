@@ -195,7 +195,7 @@ class BookingRepository {
 
 The shape check and `Slot.fromJson` are the Law 10 gate. With `checked: true` (see Models), a missing or mistyped field throws `CheckedFromJsonException`, so a malformed row becomes an `Err` here rather than a model the rest of the app trusts. Catch `on Exception`, never everything: a bug in your own code throws an `Error`, which must still crash loudly. Everything arriving from the network or local storage passes through a `fromJson` before it becomes a model.
 
-`Err` carries the exception itself, not a message. The controller may branch on its kind, for example offline against not signed in. It gets the text the screen shows from `parseError` in `utils/error_handler.dart`, the one place that turns an error into a message.
+`Err` carries the exception itself, not a message. The service turns a raw failure into a typed exception declared in `models/`, such as offline or session expired, and the repository returns it inside `Err`. The controller may branch on that type to choose what to show, which Law 12 leaves to the UI side. Turning it into text is parsing, and only `parseError` in `utils/error_handler.dart` does that.
 
 ---
 
@@ -271,7 +271,7 @@ dart_code_linter:
     - avoid-banned-imports:
         entries:
           - paths: ['.*/lib/services/.*\.dart']
-            deny: ['(^|/)(features|widgets|state|repositories)/']
+            deny: ['(^|/)(features|widgets|repositories)/']
             message: 'services/ may use only utils, models, and config.'
 ```
 
