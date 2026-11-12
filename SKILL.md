@@ -169,7 +169,7 @@ Commit after each layer, so every commit compiles. **Done when** the feature run
 
 ## Starting a New Project
 
-This is the full app procedure. A small app runs steps 1 to 4 and step 7, and creates layer folders as files need them. A script needs step 2 only.
+This is the full app procedure. A small app runs steps 1 to 4 and step 7, adds step 5 when its second feature arrives, and creates layer folders as files need them. A script needs step 2 only.
 
 The order matters more than the speed. Installing the boundary check on day one takes ten minutes while the violation count is zero. Retrofitting it at forty files takes a weekend.
 
@@ -337,7 +337,7 @@ A new file goes into the folder for its layer, found with Where Does This Code G
 A folder whose files do different jobs, such as a service beside a screen beside a helper, is a dumping ground. Split it by layer, then by feature.
 
 ### 4. The entry point orchestrates, never implements
-The screen, widget, route handler, or module entry composes things. It does not define them. No business rules, no raw client calls, no formatting. What it pulls out goes into the feature's private files grouped by topic, not one file per function: a small feature's checks and formatting share one file. It calls the UI logic layer where one exists; where the stack has no UI logic layer between entry point and service, such as a backend route handler, it calls one service function and returns. In a command-line app, the entry file parses the arguments and calls one door function per command; parsing arguments is composition, not implementation.
+The screen, widget, route handler, or module entry composes things. It does not define them. No business rules, no raw client calls, no formatting. What it pulls out goes into the feature's private files grouped by topic, not one file per function: a small feature's checks and formatting share one file. It calls the UI logic layer where one exists; where the stack has no UI logic layer between entry point and service, such as a backend route handler, it calls the service functions the job needs and returns. In a command-line app, the entry file parses the arguments and calls one door function per command; parsing arguments is composition, not implementation.
 
 ### 5. Features never touch each other
 A feature must not import from a sibling feature. When one needs something from another, there are three paths: move the shared work down into a service, move the shared shape into the type layer, or use an event so the sender does not know who listens. A shared store is not a fourth path. Writing to a store in feature A so feature B can read it is a sibling import with extra steps: the coupling is still there, it has just left the import line where a lint rule could catch it.

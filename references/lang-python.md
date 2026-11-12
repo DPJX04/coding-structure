@@ -82,7 +82,7 @@ utils/     can use →  domain only
 domain/    can use →  nothing
 ```
 
-There is no UI logic layer in a backend, so the feature's entry point composes its private helpers and its one service call directly, per Law 4: it may call them, it defines none of them.
+There is no UI logic layer in a backend, so the feature's entry point composes its private helpers and its service calls directly, per Law 4: it may call them, it defines none of them.
 
 ### Why there is no store layer here
 
