@@ -20,9 +20,7 @@ project_root/
 │       │   └── booking/
 │       │       ├── __init__.py     # the public door, re-exports only
 │       │       ├── orchestrator.py # entry point for the feature
-│       │       ├── _validator.py   # private, leading underscore
-│       │       ├── _processor.py
-│       │       └── _formatter.py
+│       │       └── _rules.py       # private, leading underscore: the feature's checks and formatting
 │       ├── services/
 │       │   ├── __init__.py
 │       │   ├── db.py               # connection pool, built once from settings
@@ -117,29 +115,32 @@ __all__ = ["create_booking", "cancel_booking"]
 
 ```python
 # src/myapp/features/booking/orchestrator.py
-from myapp.services.db_service import insert_booking
 from myapp.domain.booking import Confirmation
 from myapp.domain.result import Err, Ok, Result
-from ._validator import validate_booking
-from ._formatter import to_confirmation
+from myapp.services import db_service
+from . import _rules
 
 def create_booking(user_id: str, slot_id: str) -> Result[Confirmation]:
     """Validate and save one booking, returning its confirmation or an error."""
-    error = validate_booking(user_id, slot_id)
+    error = _rules.validate_booking(user_id, slot_id)
     if error:
         return Err(error)
 
-    result = insert_booking(user_id, slot_id)
+    result = db_service.insert_booking(user_id, slot_id)
     if isinstance(result, Err):
         return result
 
-    return Ok(to_confirmation(result.data))
+    return Ok(_rules.to_confirmation(result.data))
 ```
+
+Import the module and call `module.function`: `db_service.insert_booking` shows the reader where the function lives, and the import block stays one line per module. Types are imported by name.
+
+`_rules.py` holds every private function of this feature, per Law 3. It splits when a second topic has grown several functions of its own, each new file named for its topic.
 
 ### Sealing
 Python cannot enforce privacy, so it relies on two conventions and one tool:
 
-1. Leading underscore on private modules and functions. `_validator.py` signals internal.
+1. Leading underscore on private modules and functions. `_rules.py` signals internal.
 2. `__all__` in the door, which declares the public surface.
 3. `import-linter`, which fails the build on an illegal import. See below.
 
@@ -150,7 +151,7 @@ Python cannot enforce privacy, so it relies on two conventions and one tool:
 | Type | Convention | Example |
 |---|---|---|
 | Module | snake_case | `slot_validator.py` |
-| Private module | leading underscore | `_processor.py` |
+| Private module | leading underscore | `_rules.py` |
 | Package or folder | snake_case | `booking_slots/` |
 | Class | PascalCase | `BookingRequest` |
 | Function and variable | snake_case | `create_booking` |
@@ -188,10 +189,10 @@ Services are named functions, each handling its own failure and returning a `Res
 ```python
 # src/myapp/services/db_service.py
 from datetime import date as iso_date
-from myapp.services.db import pool
-from myapp.utils.error_handler import parse_error
 from myapp.domain.booking import Slot
 from myapp.domain.result import Err, Ok, Result
+from myapp.services import db
+from myapp.utils import error_handler
 
 def _to_slot(row: dict) -> Slot:
     """Check one raw row and return it as a Slot, or raise if the id is missing."""
@@ -203,13 +204,13 @@ def fetch_slots(date: str) -> Result[list[Slot]]:
     """Fetch every slot on one date. Returns Err instead of raising."""
     try:
         iso_date.fromisoformat(date)
-        with pool.connection() as conn:
+        with db.pool.connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM slots WHERE date = %s", (date,)
             ).fetchall()
         return Ok([_to_slot(row) for row in rows])
     except Exception as err:
-        return Err(parse_error(err))
+        return Err(error_handler.parse_error(err))
 ```
 
 `fromisoformat` and `_to_slot` are the Law 10 gate: input is rejected before it reaches SQL, and rows are checked before they become models. In a real project a pydantic model does `_to_slot` better; the point is that something checks. Law 8 in this stack: identity comes from the framework's verified session, `request.user` in Django or a FastAPI `Depends` that resolves the session, never from a field in the request body. An endpoint with no login gets a rate limiter such as `django-ratelimit` or `slowapi`.
