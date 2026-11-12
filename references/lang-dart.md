@@ -24,7 +24,7 @@ project_root/
 │   ├── widgets/                        # shared UI, used by two or more features
 │   │   ├── app_button.dart
 │   │   └── app_modal.dart
-│   ├── repositories/                   # domain data access, the service layer
+│   ├── repositories/                   # domain data and app wide state, the service layer
 │   │   ├── booking_repository.dart
 │   │   └── auth_repository.dart
 │   ├── services/                       # raw external clients wrapped thin
@@ -48,7 +48,7 @@ project_root/
 Flutter convention splits what other stacks call one service layer into two:
 
 - **Service** wraps a raw external client. An HTTP client, a local database, a plugin. It knows nothing about your domain.
-- **Repository** owns a domain concept. It calls one or more services, converts raw responses into your models, handles caching, and is what the rest of the app talks to.
+- **Repository** owns a domain concept. It calls one or more services, converts raw responses into your models, handles caching, holds app wide state such as the signed in session, and is what the rest of the app talks to. It never imports another repository.
 
 Features call repositories. Repositories call services. Widgets call neither directly.
 
@@ -59,31 +59,24 @@ Features call repositories. Repositories call services. Widgets call neither dir
 Law 1 translated into this layout's folder names. The diagram in `SKILL.md` stays the authoritative copy.
 
 ```
-features/      can use →  state, repositories, widgets, utils, models
-widgets/       can use →  state, utils, models
-state/         can use →  repositories, utils, models
-repositories/  can use →  services, utils, models, config
+features/      can use →  repositories, widgets, utils, models
+widgets/       can use →  utils, models
+repositories/  can use →  services, utils, models, config (never another repository)
 services/      can use →  utils, models, config
 utils/         can use →  models only
 models/        can use →  nothing
 ```
 
-`routing/`, `app.dart`, and `main.dart` sit above `features/`: they import public doors and wire them up, and nothing imports them. There is no shared UI-logic folder by convention: a controller stays in its feature, and a controller two features share is shared state and moves to `state/`.
+`routing/`, `app.dart`, and `main.dart` sit above `features/`: they import public doors and wire them up, and nothing imports them. There is no shared UI-logic folder: a controller is never shared.
 
 ### State, and where it lives
 
-The store rules are Law 1 in `SKILL.md`. The Flutter mechanics:
+Flutter has no store layer, so there is no `state/` folder. Law 1 in `SKILL.md` lets that layer be absent, and app wide state takes Law 5's first path: it moves down into the repository that owns the data. The Flutter mechanics:
 
-A controller that belongs to one feature stays in that feature, as `booking_controller.dart` shows above. Add a shared state folder only when two or more features need the same state.
-
-```
-lib/state/                  # or providers/, or store/, pick one and keep it
-├── session_state.dart      # one holder per domain, not one for the app
-└── cart_state.dart
-```
-
-- Whatever the mechanism, a provider, a notifier, an inherited widget, or a plain singleton, the layer rule is the same. The mechanism is a detail. The direction of the arrow is not.
-- A cache of remote data belongs in the repository that owns that domain, not in shared state. The repository already exists for exactly this.
+- A controller belongs to one screen and stays in its feature, as `booking_controller.dart` shows above. Two screens that show the same data each keep their own controller.
+- App wide state, such as the signed in session or an in-memory cache, lives in the repository that owns that data. The repository exposes it as a `Stream` or a `Listenable`, and each controller that needs it listens.
+- Repositories never import each other, which is narrower than Law 1 allows inside a layer. Logic that needs two of them takes both in the controller and combines them there.
+- Whatever the mechanism, a provider, a notifier, or a stream, the layer rule is the same. The mechanism is a detail. The direction of the arrow is not.
 
 ---
 
@@ -165,12 +158,12 @@ Law 12: one error shape, declared once in the lowest layer, imported by every re
 sealed class Result<T> {
   const Result();
 }
-class Ok<T> extends Result<T> {
+final class Ok<T> extends Result<T> {
   final T data;
   const Ok(this.data);
 }
-class Err<T> extends Result<T> {
-  final String error;
+final class Err<T> extends Result<T> {
+  final Exception error;
   const Err(this.error);
 }
 ```
@@ -180,7 +173,6 @@ class Err<T> extends Result<T> {
 import 'package:myapp/models/booking.dart';
 import 'package:myapp/models/result.dart';
 import 'package:myapp/services/api_client.dart';
-import 'package:myapp/utils/error_handler.dart';
 
 class BookingRepository {
   BookingRepository(this._api);
@@ -195,13 +187,15 @@ class BookingRepository {
       }
       return Ok(raw.cast<Map<String, dynamic>>().map(Slot.fromJson).toList());
     } on Exception catch (err) {
-      return Err(parseError(err));
+      return Err(err);
     }
   }
 }
 ```
 
 The shape check and `Slot.fromJson` are the Law 10 gate. With `checked: true` (see Models), a missing or mistyped field throws `CheckedFromJsonException`, so a malformed row becomes an `Err` here rather than a model the rest of the app trusts. Catch `on Exception`, never everything: a bug in your own code throws an `Error`, which must still crash loudly. Everything arriving from the network or local storage passes through a `fromJson` before it becomes a model.
+
+`Err` carries the exception itself, not a message. The controller may branch on its kind, for example offline against not signed in. It gets the text the screen shows from `parseError` in `utils/error_handler.dart`, the one place that turns an error into a message.
 
 ---
 

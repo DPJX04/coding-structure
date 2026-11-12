@@ -78,8 +78,7 @@ lib/
 ├── main.dart, app.dart  entry files
 ├── features/<name>/     <name>.dart is its door
 ├── widgets/             shared UI
-├── state/               only when two features share state
-├── repositories/        domain data access
+├── repositories/        domain data and app wide state
 ├── services/            raw external clients
 ├── utils/               pure helpers
 ├── models/              shared types and Result
