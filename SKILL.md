@@ -39,7 +39,7 @@ Only four decisions and the folder names are language specific. Everything else 
 |---|---|---|---|---|
 | TypeScript, JavaScript | one barrel `index.ts` (`index.js` in plain JavaScript) per feature, no barrels elsewhere | `eslint-plugin-boundaries`, or `import/no-restricted-paths` | PascalCase components, camelCase for everything else | beside the file as `*.test.ts`, end to end in a top level `e2e/` |
 | Python | thin `__init__.py` re-export with `__all__`, underscore prefix on private modules | `import-linter` | snake_case modules and packages, PascalCase classes | top level `tests/` mirroring the package |
-| Dart, Flutter | one barrel `.dart` file per feature, underscore prefix on private members | a `custom_lint` rule or analyzer plugin for banned imports, CI grep as fallback | snake_case files, PascalCase classes | top level `test/` mirroring `lib/` |
+| Dart, Flutter | one barrel `.dart` file per feature, underscore prefix on private members | an analyzer plugin under `plugins:` that bans imports per folder, such as `dart_code_linter`'s `avoid-banned-imports`, CI grep as fallback | snake_case files, PascalCase classes | top level `test/` mirroring `lib/` |
 
 ### The folder tree per language
 
