@@ -106,7 +106,7 @@ Skip this step in Changing Existing Code; that project's size is already settled
 
 Structure costs reading time too. Build only as much of it as the code needs today.
 
-A **feature** is one domain noun the user works with, such as invoices, bookings, or reminders, together with every screen, command, or endpoint that acts on it. Listing, paying, and totalling invoices is one feature. Count nouns, not commands. A command belongs to the noun it acts on: reminders about overdue invoices are part of invoices until reminders get screens or commands of their own. A noun the user only sees through another noun, such as the client named on an invoice, is part of that feature even when it has its own data.
+A **feature** is one domain noun the user works with, such as invoices, bookings, or reminders, together with every screen, command, or endpoint that acts on it. Listing, paying, and totalling invoices is one feature. Count nouns, not commands. A command belongs to the noun it acts on: reminders about overdue invoices are part of invoices until reminders get screens or commands of their own. A list, filter, or total of a noun stays with that noun. A command that uses one noun to produce a different thing, such as an answer written from saved documents, is a feature of its own, named for what it produces. A noun the user only sees through another noun, such as the client named on an invoice, is part of that feature even when it has its own data.
 
 | Size | What it looks like | What you build |
 |---|---|---|
